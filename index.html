@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>근무일지 캘린더 프로토타입</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="toolbar" aria-label="근무 일정 입력">
+      <div>
+        <p class="eyebrow">Work Log Calendar</p>
+        <h1>근무일지 캘린더</h1>
+      </div>
+    </section>
+
+    <section class="summary-grid" aria-label="근무 요약">
+      <article class="metric">
+        <span>총 근무 시간</span>
+        <strong id="totalNet">0시간</strong>
+      </article>
+      <article class="metric">
+        <span>자동 식사 차감</span>
+        <strong id="totalMeal">0분</strong>
+      </article>
+      <article class="metric warning">
+        <span>겹침 발생</span>
+        <strong id="overlapCount">0건</strong>
+      </article>
+      <article class="metric">
+        <span>이번 주 일정</span>
+        <strong id="shiftCount">0건</strong>
+      </article>
+    </section>
+
+    <section class="summary-panel" aria-label="월별 근무 시간">
+      <div class="panel-header">
+        <h2>월별 근무 시간</h2>
+      </div>
+      <div id="monthSummary" class="summary-list"></div>
+    </section>
+
+    <section class="summary-panel" aria-label="태그별 근무 시간">
+      <div class="panel-header">
+        <h2>태그별 근무 시간</h2>
+      </div>
+      <div id="tagSummary" class="summary-list"></div>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel">
+        <div class="panel-header">
+          <h2>일정 목록</h2>
+          <button id="clearAll" type="button" class="secondary">이번 주 삭제</button>
+        </div>
+        <div id="shiftList" class="shift-list"></div>
+      </aside>
+
+      <section class="calendar-panel" aria-label="주간 캘린더">
+        <div class="calendar-header">
+          <button id="prevWeek" type="button" class="icon-button" aria-label="이전 주">‹</button>
+          <h2 id="weekLabel"></h2>
+          <div class="calendar-actions">
+            <button id="copyWeek" type="button" class="secondary">주간 복사</button>
+            <button id="pasteWeek" type="button" class="secondary">주간 붙여넣기</button>
+            <button id="nextWeek" type="button" class="icon-button" aria-label="다음 주">›</button>
+          </div>
+        </div>
+        <div id="calendar" class="calendar"></div>
+      </section>
+    </section>
+  </main>
+
+  <template id="shiftItemTemplate">
+    <article class="shift-item">
+      <div class="item-view">
+        <div>
+          <strong class="item-title"></strong>
+          <span class="tag-pill item-tag"></span>
+          <p class="item-meta"></p>
+        </div>
+        <div class="item-actions">
+          <button type="button" class="action-button edit-button" data-action="edit">수정</button>
+          <button type="button" class="action-button copy-button" data-action="copy">복사</button>
+          <button type="button" class="action-button delete-button" data-action="delete" aria-label="일정 삭제">삭제</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <div id="editModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <form id="editForm" class="modal-card">
+      <div class="modal-header">
+        <h2 id="editModalTitle">근무 수정</h2>
+        <button id="closeEditModal" type="button" class="icon-button" aria-label="수정 닫기">×</button>
+      </div>
+      <input id="editId" type="hidden">
+      <label>
+        근무명
+        <input id="editTitle" type="text" required>
+      </label>
+      <label>
+        태그
+        <input id="editTag" type="text">
+      </label>
+      <div class="tag-control">
+        <div id="editTagChoices" class="tag-choices" aria-label="기존 태그 선택"></div>
+        <div id="editTagPalette" class="tag-palette" aria-label="태그 색상 선택"></div>
+      </div>
+      <label>
+        날짜
+        <input id="editDate" type="date" required>
+      </label>
+      <div class="modal-row">
+        <label>
+          시작
+          <input id="editStart" type="time" required>
+        </label>
+        <label>
+          종료
+          <input id="editEnd" type="time" required>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" data-modal-cancel>취소</button>
+        <button type="submit">저장</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
