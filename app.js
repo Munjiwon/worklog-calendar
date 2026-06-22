@@ -11,6 +11,7 @@ const WEEK_CLIPBOARD_KEY = "worklog-calendar-prototype-week-clipboard";
 const TAG_COLORS_KEY = "worklog-calendar-prototype-tag-colors";
 const HOLIDAYS_KEY = "worklog-calendar-prototype-holidays";
 const TAG_TARGETS_KEY = "worklog-calendar-prototype-tag-targets";
+const TAG_MEALS_KEY = "worklog-calendar-prototype-tag-meals";
 const DEFAULT_TAG = "미지정";
 const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
 const MEAL_WINDOWS = [
@@ -37,6 +38,7 @@ const totalMeal = document.querySelector("#totalMeal");
 const overlapCount = document.querySelector("#overlapCount");
 const shiftCount = document.querySelector("#shiftCount");
 const monthSummary = document.querySelector("#monthSummary");
+const mealSettings = document.querySelector("#mealSettings");
 const tagSummary = document.querySelector("#tagSummary");
 const clearAll = document.querySelector("#clearAll");
 const prevWeek = document.querySelector("#prevWeek");
@@ -60,6 +62,7 @@ let shifts = loadShifts();
 let tagColors = loadTagColors();
 let holidays = loadHolidays();
 let tagTargetMinutes = loadTagTargetMinutes();
+let tagMealSettings = loadTagMealSettings();
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
@@ -242,6 +245,19 @@ monthSummary.addEventListener("change", (event) => {
   tagTargetMinutes[tag] = Math.max(0, Number(input.value || 0)) * 60;
   saveTagTargetMinutes();
   renderMonthSummary(currentWeekStart);
+});
+
+mealSettings.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-meal-tag]");
+  if (!input) return;
+  const tag = normalizeTag(input.dataset.mealTag);
+  const meal = input.dataset.mealName;
+  const edge = input.dataset.mealEdge;
+  const settings = getTagMealSetting(tag);
+  settings[meal][edge] = timeToMinutes(input.value);
+  tagMealSettings[tag] = settings;
+  saveTagMealSettings();
+  render();
 });
 
 shiftList.addEventListener("dblclick", (event) => {
@@ -434,6 +450,7 @@ function render() {
   weekLabel.textContent = `${formatDate(currentWeekStart)} - ${formatDate(weekEnd)}`;
   pasteWeek.disabled = loadWeekClipboard().length === 0;
   renderSummary(countedShifts, overlapIds);
+  renderMealSettings();
   renderMonthSummary(currentWeekStart);
   renderTagSummary(countedShifts);
   renderShiftList(weekShifts, overlapIds);
@@ -458,6 +475,36 @@ function renderSummary(weekShifts, overlapIds) {
   shiftCount.textContent = `${weekShifts.length}건`;
 
   overlapCount.closest(".metric").classList.toggle("warning", overlapIds.size > 0);
+}
+
+function renderMealSettings() {
+  mealSettings.innerHTML = "";
+  const tags = getAppliedTags();
+
+  if (tags.length === 0) {
+    mealSettings.innerHTML = '<div class="empty-state compact">전체 근무에 적용된 태그가 없습니다.</div>';
+    return;
+  }
+
+  tags.forEach((tag) => {
+    const color = getTagColor(tag);
+    const setting = getTagMealSetting(tag);
+    const item = document.createElement("article");
+    item.className = "meal-setting-item";
+    item.innerHTML = `
+      <span class="tag-pill" style="--tag-bg: ${color.bg}; --tag-border: ${color.border}; --tag-text: ${color.text};">${escapeHtml(tag)}</span>
+      <label>점심 시작<input type="time" value="${minutesToTime(setting.lunch.start)}" data-meal-tag="${escapeHtml(tag)}" data-meal-name="lunch" data-meal-edge="start"></label>
+      <label>점심 종료<input type="time" value="${minutesToTime(setting.lunch.end)}" data-meal-tag="${escapeHtml(tag)}" data-meal-name="lunch" data-meal-edge="end"></label>
+      <label>저녁 시작<input type="time" value="${minutesToTime(setting.dinner.start)}" data-meal-tag="${escapeHtml(tag)}" data-meal-name="dinner" data-meal-edge="start"></label>
+      <label>저녁 종료<input type="time" value="${minutesToTime(setting.dinner.end)}" data-meal-tag="${escapeHtml(tag)}" data-meal-name="dinner" data-meal-edge="end"></label>
+    `;
+    mealSettings.append(item);
+  });
+}
+
+function getAppliedTags() {
+  return [...new Set(shifts.map((shift) => getShiftTag(shift)))]
+    .sort((a, b) => a.localeCompare(b, "ko-KR"));
 }
 
 function renderMonthSummary(weekStart) {
@@ -712,7 +759,7 @@ function makeShiftBlock(shift, isOverlap, lane = 0, laneCount = 1, isExcluded = 
   block.style.width = laneCount === 1
     ? `calc(100% - ${chromeWidth}px)`
     : `calc(${slotPercent}% - ${widthPxOffset}px)`;
-  getMealSegments(start, end).forEach((segment) => {
+  getMealSegments(start, end, shift).forEach((segment) => {
     block.append(makeMealOverlay(segment, visibleStart, visibleEnd));
   });
 
@@ -736,8 +783,8 @@ function makeResizeHandle(edge) {
   return handle;
 }
 
-function getMealSegments(start, end) {
-  return MEAL_WINDOWS
+function getMealSegments(start, end, shift) {
+  return getMealWindowsForShift(shift)
     .map((meal) => ({
       ...meal,
       overlapStart: Math.max(start, meal.start),
@@ -931,10 +978,12 @@ function deleteTag(tag) {
   ));
   delete tagColors[normalized];
   delete tagTargetMinutes[normalized];
+  delete tagMealSettings[normalized];
   ensureTagColor(DEFAULT_TAG);
   editTag.value = DEFAULT_TAG;
   saveTagColors();
   saveTagTargetMinutes();
+  saveTagMealSettings();
   saveShifts();
   render();
 }
@@ -1095,6 +1144,29 @@ function setTagColor(tag, colorIndex) {
   tagColors[normalized] = TAG_PALETTE[colorIndex] || TAG_PALETTE[0];
 }
 
+function getTagMealSetting(tag) {
+  const normalized = normalizeTag(tag);
+  const saved = tagMealSettings[normalized] || {};
+  return {
+    lunch: {
+      start: Number(saved.lunch?.start ?? MEAL_WINDOWS[0].start),
+      end: Number(saved.lunch?.end ?? MEAL_WINDOWS[0].end)
+    },
+    dinner: {
+      start: Number(saved.dinner?.start ?? MEAL_WINDOWS[1].start),
+      end: Number(saved.dinner?.end ?? MEAL_WINDOWS[1].end)
+    }
+  };
+}
+
+function getMealWindowsForShift(shift) {
+  const setting = getTagMealSetting(getShiftTag(shift));
+  return [
+    { label: "점심", start: setting.lunch.start, end: setting.lunch.end },
+    { label: "저녁", start: setting.dinner.start, end: setting.dinner.end }
+  ].filter((meal) => meal.start < meal.end);
+}
+
 function isEditableElement(element) {
   return Boolean(element.closest("input, textarea, select, [contenteditable='true']"));
 }
@@ -1104,7 +1176,7 @@ function getNetMinutes(shift) {
 }
 
 function getMealDeductionMinutes(shift) {
-  return getMealSegments(timeToMinutes(shift.start), timeToMinutes(shift.end))
+  return getMealSegments(timeToMinutes(shift.start), timeToMinutes(shift.end), shift)
     .reduce((sum, segment) => sum + segment.overlapEnd - segment.overlapStart, 0);
 }
 
@@ -1221,6 +1293,18 @@ function loadTagTargetMinutes() {
 
 function saveTagTargetMinutes() {
   localStorage.setItem(TAG_TARGETS_KEY, JSON.stringify(tagTargetMinutes));
+}
+
+function loadTagMealSettings() {
+  try {
+    return JSON.parse(localStorage.getItem(TAG_MEALS_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTagMealSettings() {
+  localStorage.setItem(TAG_MEALS_KEY, JSON.stringify(tagMealSettings));
 }
 
 function loadWeekClipboard() {

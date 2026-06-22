@@ -139,6 +139,31 @@ select {
   gap: 10px;
 }
 
+.meal-settings {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.meal-setting-item {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) repeat(4, minmax(92px, 1fr));
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.meal-setting-item label {
+  font-size: 11px;
+}
+
+.meal-setting-item input {
+  height: 32px;
+}
+
 .summary-item {
   display: flex;
   align-items: center;
@@ -824,6 +849,10 @@ button:disabled {
   .month-tag-row {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .meal-setting-item {
+    grid-template-columns: 1fr;
   }
 
   .target-result {
