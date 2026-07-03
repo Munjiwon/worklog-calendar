@@ -45,9 +45,14 @@ const prevWeek = document.querySelector("#prevWeek");
 const nextWeek = document.querySelector("#nextWeek");
 const copyWeek = document.querySelector("#copyWeek");
 const pasteWeek = document.querySelector("#pasteWeek");
+const copyTagsNextWeek = document.querySelector("#copyTagsNextWeek");
 const editModal = document.querySelector("#editModal");
 const editForm = document.querySelector("#editForm");
 const closeEditModal = document.querySelector("#closeEditModal");
+const tagCopyModal = document.querySelector("#tagCopyModal");
+const tagCopyForm = document.querySelector("#tagCopyForm");
+const closeTagCopyModal = document.querySelector("#closeTagCopyModal");
+const copyTagChoices = document.querySelector("#copyTagChoices");
 const editId = document.querySelector("#editId");
 const editTitle = document.querySelector("#editTitle");
 const editTag = document.querySelector("#editTag");
@@ -145,6 +150,8 @@ pasteWeek.addEventListener("click", () => {
   render();
 });
 
+copyTagsNextWeek.addEventListener("click", openTagCopyModal);
+
 calendar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-holiday-toggle]");
   if (!button) return;
@@ -226,6 +233,49 @@ editModal.addEventListener("click", (event) => {
   }
 });
 
+closeTagCopyModal.addEventListener("click", closeTagCopyModalDialog);
+tagCopyModal.addEventListener("click", (event) => {
+  if (event.target === tagCopyModal || event.target.closest("[data-tag-copy-cancel]")) {
+    closeTagCopyModalDialog();
+  }
+});
+
+tagCopyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const selectedTags = new Set(
+    [...copyTagChoices.querySelectorAll("input:checked")].map((input) => normalizeTag(input.value))
+  );
+
+  if (selectedTags.size === 0) {
+    alert("다음 주로 복사할 태그를 하나 이상 선택해주세요.");
+    return;
+  }
+
+  const weekShifts = getWeekShifts(currentWeekStart);
+  const copied = weekShifts
+    .filter((shift) => selectedTags.has(getShiftTag(shift)))
+    .map((shift) => makeShift(
+      shift.title,
+      getShiftTag(shift),
+      toISODate(addDays(parseISODate(shift.date), 7)),
+      shift.start,
+      shift.end
+    ));
+
+  if (copied.length === 0) {
+    alert("선택한 태그에 해당하는 이번 주 일정이 없습니다.");
+    return;
+  }
+
+  shifts = [...shifts, ...copied];
+  selectedShiftId = null;
+  saveShifts();
+  closeTagCopyModalDialog();
+  currentWeekStart = addDays(currentWeekStart, 7);
+  render();
+  alert(`${copied.length}건의 일정을 다음 주로 복사했습니다.`);
+});
+
 editTag.addEventListener("input", () => renderTagControls());
 editTag.addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
@@ -279,7 +329,11 @@ document.addEventListener("keydown", (event) => {
     closeModal();
     return;
   }
-  if (!editModal.classList.contains("hidden")) return;
+  if (event.key === "Escape" && !tagCopyModal.classList.contains("hidden")) {
+    closeTagCopyModalDialog();
+    return;
+  }
+  if (!editModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden")) return;
   if (event.key !== "Delete" || !selectedShiftId) return;
   if (isEditableElement(event.target)) return;
 
@@ -911,6 +965,52 @@ function openEditModal(shift) {
 function closeModal() {
   editModal.classList.add("hidden");
   editForm.reset();
+}
+
+function openTagCopyModal() {
+  const weekShifts = getWeekShifts(currentWeekStart);
+  if (weekShifts.length === 0) {
+    alert("다음 주로 복사할 이번 주 일정이 없습니다.");
+    return;
+  }
+
+  const tagCounts = new Map();
+  weekShifts.forEach((shift) => {
+    const tag = getShiftTag(shift);
+    tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+  });
+
+  copyTagChoices.innerHTML = "";
+  [...tagCounts.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], "ko-KR"))
+    .forEach(([tag, count]) => {
+      const color = getTagColor(tag);
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+      const pill = document.createElement("span");
+      const amount = document.createElement("strong");
+      label.className = "tag-copy-option";
+      label.style.setProperty("--tag-bg", color.bg);
+      label.style.setProperty("--tag-border", color.border);
+      label.style.setProperty("--tag-text", color.text);
+      checkbox.type = "checkbox";
+      checkbox.value = tag;
+      checkbox.checked = true;
+      pill.className = "tag-pill";
+      pill.textContent = tag;
+      amount.textContent = `${count}건`;
+      label.append(checkbox, pill, amount);
+      copyTagChoices.append(label);
+    });
+
+  tagCopyModal.classList.remove("hidden");
+  copyTagChoices.querySelector("input")?.focus();
+}
+
+function closeTagCopyModalDialog() {
+  tagCopyModal.classList.add("hidden");
+  tagCopyForm.reset();
+  copyTagChoices.innerHTML = "";
 }
 
 function renderTagControls() {
