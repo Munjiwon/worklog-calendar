@@ -12,6 +12,7 @@ const TAG_COLORS_KEY = "worklog-calendar-prototype-tag-colors";
 const HOLIDAYS_KEY = "worklog-calendar-prototype-holidays";
 const TAG_TARGETS_KEY = "worklog-calendar-prototype-tag-targets";
 const TAG_MEALS_KEY = "worklog-calendar-prototype-tag-meals";
+const LEGACY_MIGRATION_KEY = "worklog-calendar-prototype-legacy-migrated-to-user";
 const DEFAULT_TAG = "미지정";
 const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
 const MEAL_WINDOWS = [
@@ -70,30 +71,22 @@ const editEnd = document.querySelector("#editEnd");
 
 let currentWeekStart = startOfWeek(new Date());
 let currentMonthStart = startOfMonth(currentWeekStart);
-let shifts = loadShifts();
-let tagColors = loadTagColors();
-let holidays = loadHolidays();
-let tagTargetMinutes = loadTagTargetMinutes();
-let tagMealSettings = loadTagMealSettings();
+let storageKeys = makeStorageKeys("anonymous");
+let currentSession = null;
+let shifts = [];
+let tagColors = {};
+let holidays = new Set();
+let tagTargetMinutes = {};
+let tagMealSettings = {};
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
 let monthDraggingShift = null;
 let selectedShiftId = null;
+let calendarDataSaveTimer = null;
 const collapsedTags = new Set();
 
-if (shifts.length === 0) {
-  const today = toISODate(new Date());
-  shifts = [
-    makeShift("오전 근무", DEFAULT_TAG, today, "09:00", "13:00"),
-    makeShift("오후 근무", DEFAULT_TAG, today, "12:30", "18:00"),
-    makeShift("야간 근무", "야간", toISODate(addDays(new Date(), 1)), "19:00", "23:00")
-  ];
-  saveShifts();
-}
-
-render();
-renderTagControls();
+initializeApp();
 
 clearAll.addEventListener("click", () => {
   const weekShifts = getWeekShifts(currentWeekStart);
@@ -152,7 +145,7 @@ copyWeek.addEventListener("click", () => {
     start: shift.start,
     end: shift.end
   }));
-  localStorage.setItem(WEEK_CLIPBOARD_KEY, JSON.stringify(copied));
+  setWeekClipboard(copied);
   render();
   alert(`${copied.length}건의 주간 일정을 복사했습니다.`);
 });
@@ -562,6 +555,202 @@ window.addEventListener("mouseup", () => {
   clearCreatePreview();
   render();
 });
+
+async function initializeApp() {
+  currentSession = await loadCurrentSession();
+  if (!currentSession) {
+    window.location.href = "/login";
+    return;
+  }
+
+  storageKeys = makeStorageKeys(currentSession.username);
+  migrateLegacyStorage(currentSession);
+  const serverRecord = await loadServerCalendarData();
+  const localData = readLocalCalendarData();
+  const initialData = serverRecord.exists ? serverRecord.data : localData;
+  applyCalendarData(initialData);
+  if (!serverRecord.exists && hasCalendarData(localData)) {
+    queueCalendarDataSave();
+  }
+  selectedShiftId = null;
+  ensureTagColor(DEFAULT_TAG);
+  saveTagColors();
+  render();
+  renderTagControls();
+}
+
+async function loadCurrentSession() {
+  try {
+    const response = await fetch("/api/session", {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function loadServerCalendarData() {
+  try {
+    const response = await fetch("/api/calendar-data", {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) return { data: getEmptyCalendarData(), exists: false };
+    const result = await response.json();
+    return {
+      data: normalizeCalendarData(result.data),
+      exists: Boolean(result.exists)
+    };
+  } catch {
+    return { data: getEmptyCalendarData(), exists: false };
+  }
+}
+
+function makeStorageKeys(username) {
+  const userKey = encodeURIComponent(String(username || "anonymous").trim().toLowerCase());
+  const prefix = `worklog-calendar-prototype:${userKey}`;
+  return {
+    holidays: `${prefix}:holidays`,
+    shifts: `${prefix}:shifts`,
+    tagColors: `${prefix}:tag-colors`,
+    tagMeals: `${prefix}:tag-meals`,
+    tagTargets: `${prefix}:tag-targets`,
+    weekClipboard: `${prefix}:week-clipboard`
+  };
+}
+
+function readLocalCalendarData() {
+  return {
+    holidays: loadJsonFromStorage(storageKeys.holidays, []),
+    shifts: loadJsonFromStorage(storageKeys.shifts, []),
+    tagColors: loadJsonFromStorage(storageKeys.tagColors, {}),
+    tagMealSettings: loadJsonFromStorage(storageKeys.tagMeals, {}),
+    tagTargetMinutes: loadJsonFromStorage(storageKeys.tagTargets, {}),
+    weekClipboard: loadJsonFromStorage(storageKeys.weekClipboard, [])
+  };
+}
+
+function applyCalendarData(data) {
+  const normalized = normalizeCalendarData(data);
+  shifts = normalized.shifts;
+  tagColors = normalized.tagColors;
+  holidays = new Set(normalized.holidays);
+  tagTargetMinutes = normalized.tagTargetMinutes;
+  tagMealSettings = normalized.tagMealSettings;
+  writeLocalCalendarData(normalized);
+}
+
+function writeLocalCalendarData(data) {
+  localStorage.setItem(storageKeys.holidays, JSON.stringify(data.holidays || []));
+  localStorage.setItem(storageKeys.shifts, JSON.stringify(data.shifts || []));
+  localStorage.setItem(storageKeys.tagColors, JSON.stringify(data.tagColors || {}));
+  localStorage.setItem(storageKeys.tagMeals, JSON.stringify(data.tagMealSettings || {}));
+  localStorage.setItem(storageKeys.tagTargets, JSON.stringify(data.tagTargetMinutes || {}));
+  localStorage.setItem(storageKeys.weekClipboard, JSON.stringify(data.weekClipboard || []));
+}
+
+function getCurrentCalendarData() {
+  return {
+    holidays: [...holidays],
+    shifts,
+    tagColors,
+    tagMealSettings,
+    tagTargetMinutes,
+    weekClipboard: loadWeekClipboard()
+  };
+}
+
+function getEmptyCalendarData() {
+  return {
+    holidays: [],
+    shifts: [],
+    tagColors: {},
+    tagMealSettings: {},
+    tagTargetMinutes: {},
+    weekClipboard: []
+  };
+}
+
+function normalizeCalendarData(data) {
+  const source = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  return {
+    holidays: Array.isArray(source.holidays) ? source.holidays : [],
+    shifts: Array.isArray(source.shifts) ? source.shifts : [],
+    tagColors: isPlainObject(source.tagColors) ? source.tagColors : {},
+    tagMealSettings: isPlainObject(source.tagMealSettings) ? source.tagMealSettings : {},
+    tagTargetMinutes: isPlainObject(source.tagTargetMinutes) ? source.tagTargetMinutes : {},
+    weekClipboard: Array.isArray(source.weekClipboard) ? source.weekClipboard : []
+  };
+}
+
+function hasCalendarData(data) {
+  const normalized = normalizeCalendarData(data);
+  return normalized.shifts.length > 0
+    || normalized.holidays.length > 0
+    || normalized.weekClipboard.length > 0
+    || Object.keys(normalized.tagColors).length > 0
+    || Object.keys(normalized.tagMealSettings).length > 0
+    || Object.keys(normalized.tagTargetMinutes).length > 0;
+}
+
+function queueCalendarDataSave() {
+  if (!currentSession) return;
+  window.clearTimeout(calendarDataSaveTimer);
+  calendarDataSaveTimer = window.setTimeout(saveCalendarDataNow, 350);
+}
+
+async function saveCalendarDataNow() {
+  if (!currentSession) return;
+  try {
+    await fetch("/api/calendar-data", {
+      body: JSON.stringify(getCurrentCalendarData()),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "PUT"
+    });
+  } catch {
+    // Local storage keeps the user's changes until the next successful server save.
+  }
+}
+
+function loadJsonFromStorage(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function migrateLegacyStorage(session) {
+  if (!session || session.role !== "admin") return;
+  if (localStorage.getItem(LEGACY_MIGRATION_KEY)) return;
+
+  copyLegacyStorageValue(STORAGE_KEY, storageKeys.shifts);
+  copyLegacyStorageValue(TAG_COLORS_KEY, storageKeys.tagColors);
+  copyLegacyStorageValue(HOLIDAYS_KEY, storageKeys.holidays);
+  copyLegacyStorageValue(TAG_TARGETS_KEY, storageKeys.tagTargets);
+  copyLegacyStorageValue(TAG_MEALS_KEY, storageKeys.tagMeals);
+  copyLegacyStorageValue(WEEK_CLIPBOARD_KEY, storageKeys.weekClipboard);
+  localStorage.setItem(LEGACY_MIGRATION_KEY, session.username);
+}
+
+function copyLegacyStorageValue(sourceKey, targetKey) {
+  if (localStorage.getItem(targetKey) !== null) return;
+  const value = localStorage.getItem(sourceKey);
+  if (value !== null) {
+    localStorage.setItem(targetKey, value);
+  }
+}
 
 function render() {
   const weekEnd = addDays(currentWeekStart, 6);
@@ -1559,7 +1748,7 @@ function formatDate(date) {
 
 function loadShifts() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    return JSON.parse(localStorage.getItem(storageKeys.shifts)) || [];
   } catch {
     return [];
   }
@@ -1567,26 +1756,28 @@ function loadShifts() {
 
 function loadTagColors() {
   try {
-    return JSON.parse(localStorage.getItem(TAG_COLORS_KEY)) || {};
+    return JSON.parse(localStorage.getItem(storageKeys.tagColors)) || {};
   } catch {
     return {};
   }
 }
 
 function saveTagColors() {
-  localStorage.setItem(TAG_COLORS_KEY, JSON.stringify(tagColors));
+  localStorage.setItem(storageKeys.tagColors, JSON.stringify(tagColors));
+  queueCalendarDataSave();
 }
 
 function loadHolidays() {
   try {
-    return new Set(JSON.parse(localStorage.getItem(HOLIDAYS_KEY)) || []);
+    return new Set(JSON.parse(localStorage.getItem(storageKeys.holidays)) || []);
   } catch {
     return new Set();
   }
 }
 
 function saveHolidays() {
-  localStorage.setItem(HOLIDAYS_KEY, JSON.stringify([...holidays]));
+  localStorage.setItem(storageKeys.holidays, JSON.stringify([...holidays]));
+  queueCalendarDataSave();
 }
 
 function getTagTargetMinutes(tag) {
@@ -1595,31 +1786,33 @@ function getTagTargetMinutes(tag) {
 
 function loadTagTargetMinutes() {
   try {
-    return JSON.parse(localStorage.getItem(TAG_TARGETS_KEY)) || {};
+    return JSON.parse(localStorage.getItem(storageKeys.tagTargets)) || {};
   } catch {
     return {};
   }
 }
 
 function saveTagTargetMinutes() {
-  localStorage.setItem(TAG_TARGETS_KEY, JSON.stringify(tagTargetMinutes));
+  localStorage.setItem(storageKeys.tagTargets, JSON.stringify(tagTargetMinutes));
+  queueCalendarDataSave();
 }
 
 function loadTagMealSettings() {
   try {
-    return JSON.parse(localStorage.getItem(TAG_MEALS_KEY)) || {};
+    return JSON.parse(localStorage.getItem(storageKeys.tagMeals)) || {};
   } catch {
     return {};
   }
 }
 
 function saveTagMealSettings() {
-  localStorage.setItem(TAG_MEALS_KEY, JSON.stringify(tagMealSettings));
+  localStorage.setItem(storageKeys.tagMeals, JSON.stringify(tagMealSettings));
+  queueCalendarDataSave();
 }
 
 function loadWeekClipboard() {
   try {
-    const copied = JSON.parse(localStorage.getItem(WEEK_CLIPBOARD_KEY)) || [];
+    const copied = JSON.parse(localStorage.getItem(storageKeys.weekClipboard)) || [];
     return copied.filter((item) => (
       Number.isInteger(item.dayOffset)
       && item.dayOffset >= 0
@@ -1633,8 +1826,14 @@ function loadWeekClipboard() {
   }
 }
 
+function setWeekClipboard(copied) {
+  localStorage.setItem(storageKeys.weekClipboard, JSON.stringify(copied));
+  queueCalendarDataSave();
+}
+
 function saveShifts() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(shifts));
+  localStorage.setItem(storageKeys.shifts, JSON.stringify(shifts));
+  queueCalendarDataSave();
 }
 
 function escapeHtml(value) {

@@ -110,7 +110,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 
 ## 데이터 저장
 
-모든 데이터는 브라우저 `localStorage`에 저장됩니다.
+캘린더 데이터는 로그인한 사용자별로 분리되어 서버에 저장됩니다. `DATABASE_URL`이 있으면 PostgreSQL에 저장되고, 없으면 서버의 `DATA_DIR` 아래 파일 저장소에 저장됩니다.
 
 저장되는 항목:
 - 근무 일정
@@ -119,7 +119,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 - 휴일 날짜
 - 태그별 월 충족 시간
 
-브라우저의 사이트 데이터/localStorage를 삭제하면 저장된 일정도 삭제됩니다.
+브라우저 `localStorage`에는 빠른 복구를 위한 사용자별 캐시도 저장됩니다. 서버 저장이 정상 동작하는 환경에서는 다른 브라우저에서 같은 계정으로 로그인해도 같은 시간표를 불러옵니다.
 
 계정 데이터는 `DATABASE_URL`이 있으면 PostgreSQL에 저장됩니다. 없으면 서버의 `DATA_DIR` 아래 `users.json`에 저장됩니다.
 
@@ -144,4 +144,4 @@ worklog-calendar-prototype/
 
 ## 참고
 
-현재 일정 데이터는 로그인 세션과 별개로 브라우저 `localStorage`에 저장됩니다. 여러 기기 동기화와 사용자별 일정 DB 저장 기능은 포함되어 있지 않습니다.
+일정 데이터는 사용자별로 서버에 저장됩니다. 브라우저 `localStorage`에는 같은 사용자 전용 캐시만 남깁니다.

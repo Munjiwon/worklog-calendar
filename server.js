@@ -15,6 +15,7 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
+const CALENDAR_DATA_FILE = path.join(DATA_DIR, "calendar-data.json");
 const PUBLIC_PATHS = new Set(["/login", "/login.html", "/register", "/register.html", "/styles.css", "/favicon.ico"]);
 const ROLES = new Set(["user", "admin"]);
 
@@ -112,6 +113,24 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && pathname === "/api/users") {
       if (!requireAdmin(response, session)) return;
       await handleCreateUser(request, response);
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/calendar-data") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      sendJson(response, 200, await loadCalendarDataRecord(session.sub));
+      return;
+    }
+
+    if ((request.method === "PUT" || request.method === "POST") && pathname === "/api/calendar-data") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      await handleSaveCalendarData(request, response, session);
       return;
     }
 
@@ -234,21 +253,28 @@ async function handleCreateUser(request, response) {
   });
 }
 
-async function readBody(request) {
+async function handleSaveCalendarData(request, response, session) {
+  const body = await readJsonBody(request, 1_000_000);
+  const data = normalizeCalendarData(body);
+  await saveCalendarData(session.sub, data);
+  sendJson(response, 200, { ok: true });
+}
+
+async function readBody(request, maxBytes = 1_000_000) {
   const chunks = [];
   let size = 0;
 
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 10_000) throw new Error("Request body too large");
+    if (size > maxBytes) throw new Error("Request body too large");
     chunks.push(chunk);
   }
 
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function readJsonBody(request) {
-  const body = await readBody(request);
+async function readJsonBody(request, maxBytes) {
+  const body = await readBody(request, maxBytes);
   if (!body) return {};
   try {
     return JSON.parse(body);
@@ -358,6 +384,13 @@ async function ensureDatabaseUserStore() {
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''");
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
     await dbPool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email)) WHERE email <> ''");
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS calendar_data (
+        username TEXT PRIMARY KEY,
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
 
     const adminResult = await dbPool.query("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1");
     if (adminResult.rowCount === 0) {
@@ -484,6 +517,110 @@ async function createUser(user) {
   const users = await loadUsers();
   users.push(user);
   await saveUsers(users);
+}
+
+async function loadCalendarData(username) {
+  return (await loadCalendarDataRecord(username)).data;
+}
+
+async function loadCalendarDataRecord(username) {
+  const storageUsername = getStorageUsername(username);
+  if (dbPool) {
+    const result = await dbPool.query(
+      "SELECT data FROM calendar_data WHERE lower(username) = lower($1) LIMIT 1",
+      [storageUsername]
+    );
+    return {
+      data: normalizeCalendarData(result.rows[0]?.data || {}),
+      exists: result.rowCount > 0
+    };
+  }
+
+  const calendarData = await loadCalendarDataFile();
+  return {
+    data: normalizeCalendarData(calendarData[storageUsername] || {}),
+    exists: Object.prototype.hasOwnProperty.call(calendarData, storageUsername)
+  };
+}
+
+async function saveCalendarData(username, data) {
+  const storageUsername = getStorageUsername(username);
+  const normalizedData = normalizeCalendarData(data);
+  if (dbPool) {
+    await dbPool.query(
+      `INSERT INTO calendar_data (username, data, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (username)
+       DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      [storageUsername, normalizedData]
+    );
+    return;
+  }
+
+  const calendarData = await loadCalendarDataFile();
+  calendarData[storageUsername] = normalizedData;
+  await saveCalendarDataFile(calendarData);
+}
+
+async function loadCalendarDataFile() {
+  try {
+    const data = await fs.readFile(CALENDAR_DATA_FILE, "utf8");
+    const parsed = JSON.parse(data);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
+}
+
+async function saveCalendarDataFile(calendarData) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(CALENDAR_DATA_FILE, `${JSON.stringify(calendarData, null, 2)}\n`);
+}
+
+function getStorageUsername(username) {
+  return normalizeUsername(username).toLowerCase();
+}
+
+function normalizeCalendarData(data) {
+  const source = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  return {
+    holidays: Array.isArray(source.holidays) ? source.holidays.map(String) : [],
+    shifts: Array.isArray(source.shifts) ? source.shifts.map(normalizeShiftData).filter(Boolean) : [],
+    tagColors: normalizePlainObject(source.tagColors),
+    tagMealSettings: normalizePlainObject(source.tagMealSettings),
+    tagTargetMinutes: normalizePlainObject(source.tagTargetMinutes),
+    weekClipboard: Array.isArray(source.weekClipboard) ? source.weekClipboard.map(normalizeWeekClipboardItem).filter(Boolean) : []
+  };
+}
+
+function normalizeShiftData(shift) {
+  if (!shift || typeof shift !== "object") return null;
+  return {
+    date: String(shift.date || ""),
+    end: String(shift.end || ""),
+    id: String(shift.id || crypto.randomUUID()),
+    start: String(shift.start || ""),
+    tag: String(shift.tag || ""),
+    title: String(shift.title || "")
+  };
+}
+
+function normalizeWeekClipboardItem(item) {
+  if (!item || typeof item !== "object") return null;
+  const dayOffset = Number(item.dayOffset);
+  if (!Number.isInteger(dayOffset)) return null;
+  return {
+    dayOffset,
+    end: String(item.end || ""),
+    start: String(item.start || ""),
+    tag: String(item.tag || ""),
+    title: String(item.title || "")
+  };
+}
+
+function normalizePlainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function hashPassword(password) {
