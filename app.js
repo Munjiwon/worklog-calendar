@@ -42,6 +42,7 @@ const monthSummary = document.querySelector("#monthSummary");
 const mealSettings = document.querySelector("#mealSettings");
 const tagSummary = document.querySelector("#tagSummary");
 const clearAll = document.querySelector("#clearAll");
+const adminLink = document.querySelector("#adminLink");
 const prevWeek = document.querySelector("#prevWeek");
 const nextWeek = document.querySelector("#nextWeek");
 const copyWeek = document.querySelector("#copyWeek");
@@ -564,6 +565,7 @@ async function initializeApp() {
   }
 
   storageKeys = makeStorageKeys(currentSession.username);
+  updateToolbarForSession(currentSession);
   migrateLegacyStorage(currentSession);
   const serverRecord = await loadServerCalendarData();
   const localData = readLocalCalendarData();
@@ -591,6 +593,11 @@ async function loadCurrentSession() {
   } catch {
     return null;
   }
+}
+
+function updateToolbarForSession(session) {
+  if (!adminLink) return;
+  adminLink.hidden = session.role !== "admin";
 }
 
 async function loadServerCalendarData() {
