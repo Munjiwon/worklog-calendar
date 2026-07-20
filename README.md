@@ -30,7 +30,34 @@ HOST_PORT=3001 docker compose up -d --build
 
 이 경우 `http://localhost:3001`로 접속합니다.
 
-운영 배포 전 `docker-compose.yml`의 `WORKLOG_PASSWORD`, `SESSION_SECRET` 값을 반드시 변경하세요.
+운영 배포 전 `docker-compose.yml`의 `WORKLOG_PASSWORD`, `SESSION_SECRET`, `POSTGRES_PASSWORD` 값을 반드시 변경하세요.
+Docker Compose 실행 시 PostgreSQL 컨테이너가 함께 실행되고 계정 데이터는 `worklog-postgres` 볼륨에 저장됩니다.
+
+### Kubernetes
+
+이미지:
+
+```text
+squirtlee/work-log-calendar:latest
+```
+
+매니페스트 적용:
+
+```bash
+kubectl apply -f k8s/work-log-calendar.yaml
+```
+
+생성되는 네임스페이스는 `work-log-calendar`입니다. 앱, PostgreSQL, Secret, PVC, Service가 함께 생성됩니다.
+
+로컬에서 확인:
+
+```bash
+kubectl -n work-log-calendar port-forward svc/work-log-calendar 8080:80
+```
+
+브라우저에서 `http://localhost:8080`으로 접속합니다.
+
+운영 배포 전 `k8s/work-log-calendar.yaml`의 `WORKLOG_PASSWORD`, `SESSION_SECRET`, `POSTGRES_PASSWORD` 값을 변경하세요.
 
 ### Node 직접 실행
 
@@ -87,12 +114,15 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 
 브라우저의 사이트 데이터/localStorage를 삭제하면 저장된 일정도 삭제됩니다.
 
+계정 데이터는 `DATABASE_URL`이 있으면 PostgreSQL에 저장됩니다. 없으면 서버의 `DATA_DIR` 아래 `users.json`에 저장됩니다.
+
 ## 파일 구성
 
 ```text
 worklog-calendar-prototype/
 ├── Dockerfile
 ├── docker-compose.yml
+├── k8s/
 ├── index.html
 ├── login.html
 ├── package.json
@@ -104,5 +134,4 @@ worklog-calendar-prototype/
 
 ## 참고
 
-현재 일정 데이터는 로그인 세션과 별개로 브라우저 `localStorage`에 저장됩니다. 여러 기기 동기화, 사용자별 데이터 저장, 서버 DB 저장 기능은 포함되어 있지 않습니다.
-계정 데이터는 서버의 `DATA_DIR` 아래 `users.json`에 저장되며, Docker Compose 실행 시 `worklog-data` 볼륨에 보관됩니다.
+현재 일정 데이터는 로그인 세션과 별개로 브라우저 `localStorage`에 저장됩니다. 여러 기기 동기화와 사용자별 일정 DB 저장 기능은 포함되어 있지 않습니다.

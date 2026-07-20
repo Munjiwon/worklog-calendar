@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const http = require("http");
 const path = require("path");
+const { Pool } = require("pg");
 const querystring = require("querystring");
 
 const ROOT = __dirname;
@@ -11,6 +12,7 @@ const PASSWORD = process.env.WORKLOG_PASSWORD || "1q2w3e4r";
 const SESSION_SECRET = process.env.SESSION_SECRET || "change-this-session-secret";
 const SESSION_COOKIE = "worklog_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const DATABASE_URL = process.env.DATABASE_URL || "";
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const PUBLIC_PATHS = new Set(["/login", "/login.html", "/styles.css", "/favicon.ico"]);
@@ -28,6 +30,8 @@ const MIME_TYPES = {
 if (!process.env.SESSION_SECRET) {
   console.warn("SESSION_SECRET is not set. Set it in production to keep sessions private.");
 }
+
+let dbPool = null;
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -177,8 +181,7 @@ async function handleCreateUser(request, response) {
     role,
     username
   };
-  users.push(user);
-  await saveUsers(users);
+  await createUser(user);
 
   sendJson(response, 201, {
     user: {
@@ -286,6 +289,54 @@ function sign(payload) {
 }
 
 async function ensureUserStore() {
+  if (DATABASE_URL) {
+    await ensureDatabaseUserStore();
+    return;
+  }
+
+  await ensureFileUserStore();
+}
+
+async function ensureDatabaseUserStore() {
+  dbPool = new Pool({
+    connectionString: DATABASE_URL
+  });
+
+  await withDatabaseRetry(async () => {
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    const adminResult = await dbPool.query("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1");
+    if (adminResult.rowCount === 0) {
+      await dbPool.query(
+        "INSERT INTO users (username, password_hash, role, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (username) DO NOTHING",
+        [USERNAME, hashPassword(PASSWORD), "admin"]
+      );
+    }
+  });
+}
+
+async function withDatabaseRetry(task) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      console.warn(`Database is not ready yet. Retry ${attempt}/20.`);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+  throw lastError;
+}
+
+async function ensureFileUserStore() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
   try {
@@ -314,6 +365,18 @@ async function ensureUserStore() {
 }
 
 async function loadUsers() {
+  if (dbPool) {
+    const result = await dbPool.query(
+      "SELECT username, password_hash, role, created_at FROM users ORDER BY created_at ASC, username ASC"
+    );
+    return result.rows.map((row) => ({
+      createdAt: row.created_at.toISOString(),
+      passwordHash: row.password_hash,
+      role: row.role,
+      username: row.username
+    }));
+  }
+
   try {
     const data = await fs.readFile(USERS_FILE, "utf8");
     const users = JSON.parse(data);
@@ -325,14 +388,47 @@ async function loadUsers() {
 }
 
 async function saveUsers(users) {
+  if (dbPool) {
+    throw new Error("saveUsers is not supported for database user store");
+  }
+
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(USERS_FILE, `${JSON.stringify(users, null, 2)}\n`);
 }
 
 async function findUser(username) {
   const normalized = normalizeUsername(username);
+  if (dbPool) {
+    const result = await dbPool.query(
+      "SELECT username, password_hash, role, created_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
+      [normalized]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      createdAt: row.created_at.toISOString(),
+      passwordHash: row.password_hash,
+      role: row.role,
+      username: row.username
+    };
+  }
+
   const users = await loadUsers();
   return users.find((user) => user.username.toLowerCase() === normalized.toLowerCase());
+}
+
+async function createUser(user) {
+  if (dbPool) {
+    await dbPool.query(
+      "INSERT INTO users (username, password_hash, role, created_at) VALUES ($1, $2, $3, $4)",
+      [user.username, user.passwordHash, user.role, user.createdAt]
+    );
+    return;
+  }
+
+  const users = await loadUsers();
+  users.push(user);
+  await saveUsers(users);
 }
 
 function hashPassword(password) {

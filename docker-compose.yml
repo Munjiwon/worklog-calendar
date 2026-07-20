@@ -1,12 +1,26 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: worklog-calendar-db
+    environment:
+      POSTGRES_DB: "worklog_calendar"
+      POSTGRES_USER: "worklog"
+      POSTGRES_PASSWORD: "worklog_db_password"
+    volumes:
+      - worklog-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
   worklog-calendar:
     build: .
     container_name: worklog-calendar
+    depends_on:
+      - postgres
     ports:
       - "${HOST_PORT:-3000}:3000"
     environment:
       PORT: "3000"
       DATA_DIR: "/data"
+      DATABASE_URL: "postgresql://worklog:worklog_db_password@postgres:5432/worklog_calendar"
       WORKLOG_USERNAME: "admin"
       WORKLOG_PASSWORD: "1q2w3e4r"
       SESSION_SECRET: "replace-this-with-a-long-random-secret"
@@ -16,3 +30,4 @@ services:
 
 volumes:
   worklog-data:
+  worklog-postgres:

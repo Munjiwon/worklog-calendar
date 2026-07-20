@@ -1,0 +1,175 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: work-log-calendar
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: work-log-calendar-secrets
+  namespace: work-log-calendar
+type: Opaque
+stringData:
+  WORKLOG_USERNAME: admin
+  WORKLOG_PASSWORD: 1q2w3e4r
+  SESSION_SECRET: replace-this-with-a-long-random-session-secret
+  POSTGRES_DB: worklog_calendar
+  POSTGRES_USER: worklog
+  POSTGRES_PASSWORD: replace-this-db-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: work-log-calendar-postgres
+  namespace: work-log-calendar
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: work-log-calendar-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: work-log-calendar-postgres
+  namespace: work-log-calendar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: work-log-calendar-postgres
+  serviceName: work-log-calendar-postgres
+  template:
+    metadata:
+      labels:
+        app: work-log-calendar-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: work-log-calendar
+  namespace: work-log-calendar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: work-log-calendar
+  template:
+    metadata:
+      labels:
+        app: work-log-calendar
+    spec:
+      containers:
+        - name: work-log-calendar
+          image: squirtlee/work-log-calendar:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: PORT
+              value: "3000"
+            - name: WORKLOG_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: WORKLOG_USERNAME
+            - name: WORKLOG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: WORKLOG_PASSWORD
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: SESSION_SECRET
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: work-log-calendar-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@work-log-calendar-postgres:5432/$(POSTGRES_DB)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: work-log-calendar
+  namespace: work-log-calendar
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+  selector:
+    app: work-log-calendar

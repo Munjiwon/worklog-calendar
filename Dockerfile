@@ -6,6 +6,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATA_DIR=/data
 
+COPY package*.json ./
+RUN npm ci --omit=dev
+
 COPY --chown=node:node . .
 RUN mkdir -p /data && chown node:node /data
 
