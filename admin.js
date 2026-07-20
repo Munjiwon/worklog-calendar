@@ -3,6 +3,8 @@ const userFormMessage = document.querySelector("#userFormMessage");
 const userList = document.querySelector("#userList");
 const newUsername = document.querySelector("#newUsername");
 const newPassword = document.querySelector("#newPassword");
+const newName = document.querySelector("#newName");
+const newEmail = document.querySelector("#newEmail");
 const newRole = document.querySelector("#newRole");
 
 loadUsers();
@@ -12,6 +14,8 @@ userForm.addEventListener("submit", async (event) => {
   setMessage("");
 
   const payload = {
+    email: newEmail.value.trim(),
+    name: newName.value.trim(),
     password: newPassword.value,
     role: newRole.value,
     username: newUsername.value.trim()
@@ -57,7 +61,7 @@ function renderUsers(users) {
     <article class="user-item">
       <div>
         <strong>${escapeHtml(user.username)}</strong>
-        <span>${formatRole(user.role)}</span>
+        <span>${escapeHtml(user.name || "-")} · ${escapeHtml(user.email || "-")} · ${formatRole(user.role)}</span>
       </div>
       <time>${formatDateTime(user.createdAt)}</time>
     </article>

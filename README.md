@@ -12,7 +12,7 @@
 - 아이디: `admin`
 - 비밀번호: `1q2w3e4r`
 
-관리자 계정으로 로그인한 뒤 상단 `관리자` 메뉴에서 새 계정을 만들 수 있습니다. 권한은 `일반`, `관리자` 두 종류입니다.
+로그인 화면의 `회원가입`에서 일반 계정을 만들 수 있습니다. 관리자 계정으로 로그인한 뒤 상단 `관리자` 메뉴에서 일반/관리자 계정을 만들 수도 있습니다.
 
 ### Docker Compose
 
@@ -47,7 +47,13 @@ squirtlee/work-log-calendar:latest
 kubectl apply -f k8s/work-log-calendar.yaml
 ```
 
-생성되는 네임스페이스는 `work-log-calendar`입니다. 앱, PostgreSQL, Secret, PVC, Service가 함께 생성됩니다.
+생성되는 네임스페이스는 `work-log-calendar`입니다. 앱, PostgreSQL, Secret, PVC, Service가 함께 생성됩니다. 앱 Service는 `NodePort`이며 고정 노드포트는 `30303`입니다.
+
+노드포트로 접속:
+
+```text
+http://<노드 IP>:30303
+```
 
 로컬에서 확인:
 
@@ -74,6 +80,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 ## 주요 기능
 
 - 로그인 세션 보호 및 로그아웃
+- 회원가입에서 일반 계정 생성
 - 관리자 페이지에서 일반/관리자 계정 생성
 - 주간 캘린더에서 근무 일정 확인
 - 월간 캘린더에서 한 달 전체 근무 일정 확인
@@ -123,8 +130,11 @@ worklog-calendar-prototype/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── k8s/
+├── admin.html
+├── admin.js
 ├── index.html
 ├── login.html
+├── register.html
 ├── package.json
 ├── server.js
 ├── styles.css

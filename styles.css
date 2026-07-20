@@ -485,6 +485,18 @@ button:disabled {
   font-weight: 800;
 }
 
+.login-links {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.login-links a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
 .login-error {
   margin: 0;
   padding: 10px 12px;

@@ -15,7 +15,7 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
-const PUBLIC_PATHS = new Set(["/login", "/login.html", "/styles.css", "/favicon.ico"]);
+const PUBLIC_PATHS = new Set(["/login", "/login.html", "/register", "/register.html", "/styles.css", "/favicon.ico"]);
 const ROLES = new Set(["user", "admin"]);
 
 const MIME_TYPES = {
@@ -53,8 +53,22 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && (pathname === "/register" || pathname === "/register.html")) {
+      if (session) {
+        redirect(response, "/");
+        return;
+      }
+      await serveFile(response, "register.html");
+      return;
+    }
+
     if (request.method === "POST" && pathname === "/login") {
       await handleLogin(request, response);
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/register") {
+      await handleRegister(request, response);
       return;
     }
 
@@ -86,6 +100,8 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, 200, {
         users: users.map((user) => ({
           createdAt: user.createdAt,
+          email: user.email || "",
+          name: user.name || "",
           role: user.role,
           username: user.username
         }))
@@ -148,44 +164,70 @@ async function handleLogin(request, response) {
   redirect(response, "/login?error=1");
 }
 
-async function handleCreateUser(request, response) {
-  const body = await readJsonBody(request);
-  const username = normalizeUsername(body.username);
-  const password = String(body.password || "");
-  const role = String(body.role || "user");
+async function handleRegister(request, response) {
+  const body = querystring.parse(await readBody(request));
+  const userData = validateUserInput({
+    email: body.email,
+    name: body.name,
+    password: body.password,
+    role: "user",
+    username: body.username
+  });
 
-  if (!isValidUsername(username)) {
-    sendJson(response, 400, { error: "아이디는 영문, 숫자, 점, 밑줄, 하이픈 3-40자로 입력해주세요." });
+  if (userData.error) {
+    redirect(response, `/register?error=${encodeURIComponent(userData.error)}`);
     return;
   }
 
-  if (password.length < 6) {
-    sendJson(response, 400, { error: "비밀번호는 6자 이상으로 입력해주세요." });
-    return;
-  }
-
-  if (!ROLES.has(role)) {
-    sendJson(response, 400, { error: "권한은 일반 또는 관리자만 선택할 수 있습니다." });
-    return;
-  }
-
-  const users = await loadUsers();
-  if (users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
-    sendJson(response, 409, { error: "이미 존재하는 아이디입니다." });
+  const duplicate = await findDuplicateUser(userData.user.username, userData.user.email);
+  if (duplicate) {
+    redirect(response, `/register?error=${encodeURIComponent(duplicate)}`);
     return;
   }
 
   const user = {
     createdAt: new Date().toISOString(),
-    passwordHash: hashPassword(password),
-    role,
-    username
+    email: userData.user.email,
+    name: userData.user.name,
+    passwordHash: hashPassword(userData.user.password),
+    role: "user",
+    username: userData.user.username
+  };
+  await createUser(user);
+  setSessionCookie(response, user);
+  redirect(response, "/");
+}
+
+async function handleCreateUser(request, response) {
+  const body = await readJsonBody(request);
+  const userData = validateUserInput(body);
+
+  if (userData.error) {
+    sendJson(response, 400, { error: getUserInputErrorMessage(userData.error) });
+    return;
+  }
+
+  const duplicate = await findDuplicateUser(userData.user.username, userData.user.email);
+  if (duplicate) {
+    sendJson(response, 409, { error: getUserInputErrorMessage(duplicate) });
+    return;
+  }
+
+  const user = {
+    createdAt: new Date().toISOString(),
+    email: userData.user.email,
+    name: userData.user.name,
+    passwordHash: hashPassword(userData.user.password),
+    role: userData.user.role,
+    username: userData.user.username
   };
   await createUser(user);
 
   sendJson(response, 201, {
     user: {
       createdAt: user.createdAt,
+      email: user.email,
+      name: user.name,
       role: user.role,
       username: user.username
     }
@@ -307,16 +349,21 @@ async function ensureDatabaseUserStore() {
       CREATE TABLE IF NOT EXISTS users (
         username TEXT PRIMARY KEY,
         password_hash TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
         role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''");
+    await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
+    await dbPool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email)) WHERE email <> ''");
 
     const adminResult = await dbPool.query("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1");
     if (adminResult.rowCount === 0) {
       await dbPool.query(
-        "INSERT INTO users (username, password_hash, role, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (username) DO NOTHING",
-        [USERNAME, hashPassword(PASSWORD), "admin"]
+        "INSERT INTO users (username, password_hash, name, email, role, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) ON CONFLICT (username) DO NOTHING",
+        [USERNAME, hashPassword(PASSWORD), "관리자", "", "admin"]
       );
     }
   });
@@ -344,6 +391,8 @@ async function ensureFileUserStore() {
   } catch {
     const initialAdmin = {
       createdAt: new Date().toISOString(),
+      email: "",
+      name: "관리자",
       passwordHash: hashPassword(PASSWORD),
       role: "admin",
       username: USERNAME
@@ -356,6 +405,8 @@ async function ensureFileUserStore() {
   if (!users.some((user) => user.role === "admin")) {
     users.push({
       createdAt: new Date().toISOString(),
+      email: "",
+      name: "관리자",
       passwordHash: hashPassword(PASSWORD),
       role: "admin",
       username: USERNAME
@@ -367,10 +418,12 @@ async function ensureFileUserStore() {
 async function loadUsers() {
   if (dbPool) {
     const result = await dbPool.query(
-      "SELECT username, password_hash, role, created_at FROM users ORDER BY created_at ASC, username ASC"
+      "SELECT username, password_hash, name, email, role, created_at FROM users ORDER BY created_at ASC, username ASC"
     );
     return result.rows.map((row) => ({
       createdAt: row.created_at.toISOString(),
+      email: row.email || "",
+      name: row.name || "",
       passwordHash: row.password_hash,
       role: row.role,
       username: row.username
@@ -400,13 +453,15 @@ async function findUser(username) {
   const normalized = normalizeUsername(username);
   if (dbPool) {
     const result = await dbPool.query(
-      "SELECT username, password_hash, role, created_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
+      "SELECT username, password_hash, name, email, role, created_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
       [normalized]
     );
     const row = result.rows[0];
     if (!row) return null;
     return {
       createdAt: row.created_at.toISOString(),
+      email: row.email || "",
+      name: row.name || "",
       passwordHash: row.password_hash,
       role: row.role,
       username: row.username
@@ -420,8 +475,8 @@ async function findUser(username) {
 async function createUser(user) {
   if (dbPool) {
     await dbPool.query(
-      "INSERT INTO users (username, password_hash, role, created_at) VALUES ($1, $2, $3, $4)",
-      [user.username, user.passwordHash, user.role, user.createdAt]
+      "INSERT INTO users (username, password_hash, name, email, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [user.username, user.passwordHash, user.name, user.email, user.role, user.createdAt]
     );
     return;
   }
@@ -450,8 +505,72 @@ function normalizeUsername(username) {
   return String(username || "").trim();
 }
 
+function normalizeName(name) {
+  return String(name || "").trim();
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
 function isValidUsername(username) {
   return /^[A-Za-z0-9_.-]{3,40}$/.test(username);
+}
+
+function isValidName(name) {
+  return name.length >= 1 && name.length <= 80;
+}
+
+function isValidEmail(email) {
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validateUserInput(input) {
+  const username = normalizeUsername(input.username);
+  const password = String(input.password || "");
+  const name = normalizeName(input.name);
+  const email = normalizeEmail(input.email);
+  const role = String(input.role || "user");
+
+  if (!isValidUsername(username)) return { error: "invalid_username" };
+  if (password.length < 6) return { error: "invalid_password" };
+  if (!isValidName(name)) return { error: "invalid_name" };
+  if (!isValidEmail(email)) return { error: "invalid_email" };
+  if (!ROLES.has(role)) return { error: "invalid_role" };
+
+  return {
+    user: {
+      email,
+      name,
+      password,
+      role,
+      username
+    }
+  };
+}
+
+async function findDuplicateUser(username, email) {
+  const users = await loadUsers();
+  if (users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
+    return "duplicate_username";
+  }
+  if (users.some((user) => String(user.email || "").toLowerCase() === email.toLowerCase())) {
+    return "duplicate_email";
+  }
+  return "";
+}
+
+function getUserInputErrorMessage(error) {
+  const messages = {
+    duplicate_email: "이미 사용 중인 이메일입니다.",
+    duplicate_username: "이미 존재하는 아이디입니다.",
+    invalid_email: "이메일 형식을 확인해주세요.",
+    invalid_name: "이름은 1-80자로 입력해주세요.",
+    invalid_password: "비밀번호는 6자 이상으로 입력해주세요.",
+    invalid_role: "권한은 일반 또는 관리자만 선택할 수 있습니다.",
+    invalid_username: "아이디는 영문, 숫자, 점, 밑줄, 하이픈 3-40자로 입력해주세요."
+  };
+  return messages[error] || "계정을 만들 수 없습니다.";
 }
 
 function requireAdmin(response, session) {
