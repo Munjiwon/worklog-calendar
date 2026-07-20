@@ -46,6 +46,11 @@ const nextWeek = document.querySelector("#nextWeek");
 const copyWeek = document.querySelector("#copyWeek");
 const pasteWeek = document.querySelector("#pasteWeek");
 const copyTagsNextWeek = document.querySelector("#copyTagsNextWeek");
+const prevMonth = document.querySelector("#prevMonth");
+const nextMonth = document.querySelector("#nextMonth");
+const thisMonth = document.querySelector("#thisMonth");
+const monthCalendar = document.querySelector("#monthCalendar");
+const monthCalendarLabel = document.querySelector("#monthCalendarLabel");
 const editModal = document.querySelector("#editModal");
 const editForm = document.querySelector("#editForm");
 const closeEditModal = document.querySelector("#closeEditModal");
@@ -63,6 +68,7 @@ const editStart = document.querySelector("#editStart");
 const editEnd = document.querySelector("#editEnd");
 
 let currentWeekStart = startOfWeek(new Date());
+let currentMonthStart = startOfMonth(currentWeekStart);
 let shifts = loadShifts();
 let tagColors = loadTagColors();
 let holidays = loadHolidays();
@@ -103,11 +109,30 @@ clearAll.addEventListener("click", () => {
 
 prevWeek.addEventListener("click", () => {
   currentWeekStart = addDays(currentWeekStart, -7);
+  currentMonthStart = startOfMonth(currentWeekStart);
   render();
 });
 
 nextWeek.addEventListener("click", () => {
   currentWeekStart = addDays(currentWeekStart, 7);
+  currentMonthStart = startOfMonth(currentWeekStart);
+  render();
+});
+
+prevMonth.addEventListener("click", () => {
+  currentMonthStart = addMonths(currentMonthStart, -1);
+  render();
+});
+
+nextMonth.addEventListener("click", () => {
+  currentMonthStart = addMonths(currentMonthStart, 1);
+  render();
+});
+
+thisMonth.addEventListener("click", () => {
+  const today = new Date();
+  currentWeekStart = startOfWeek(today);
+  currentMonthStart = startOfMonth(today);
   render();
 });
 
@@ -162,6 +187,15 @@ calendar.addEventListener("click", (event) => {
     holidays.add(date);
   }
   saveHolidays();
+  render();
+});
+
+monthCalendar.addEventListener("click", (event) => {
+  const day = event.target.closest("[data-month-date]");
+  if (!day) return;
+  const date = parseISODate(day.dataset.monthDate);
+  currentWeekStart = startOfWeek(date);
+  currentMonthStart = startOfMonth(date);
   render();
 });
 
@@ -272,6 +306,7 @@ tagCopyForm.addEventListener("submit", (event) => {
   saveShifts();
   closeTagCopyModalDialog();
   currentWeekStart = addDays(currentWeekStart, 7);
+  currentMonthStart = startOfMonth(currentWeekStart);
   render();
   alert(`${copied.length}건의 일정을 다음 주로 복사했습니다.`);
 });
@@ -426,7 +461,6 @@ calendar.addEventListener("mousedown", (event) => {
     resizingShift = {
       id: shift.id,
       edge: handle.dataset.edge,
-      body: block.closest(".day-body"),
       originalStart: timeToMinutes(shift.start),
       originalEnd: timeToMinutes(shift.end)
     };
@@ -509,6 +543,7 @@ function render() {
   renderTagSummary(countedShifts);
   renderShiftList(weekShifts, overlapIds);
   renderCalendar(weekShifts, overlapIds);
+  renderMonthCalendar();
   renderTagControls();
 }
 
@@ -769,6 +804,77 @@ function renderCalendar(weekShifts, overlapIds) {
   }
 }
 
+function renderMonthCalendar() {
+  monthCalendar.innerHTML = "";
+  monthCalendarLabel.textContent = formatMonthKey(toISODate(currentMonthStart).slice(0, 7));
+
+  dayNames.forEach((dayName) => {
+    const item = document.createElement("div");
+    item.className = "month-weekday";
+    item.textContent = dayName;
+    monthCalendar.append(item);
+  });
+
+  getMonthGridDays(currentMonthStart).forEach((date) => {
+    const iso = toISODate(date);
+    const dayShifts = getDayShifts(iso);
+    const holiday = isHoliday(iso);
+    const countedDayShifts = holiday ? [] : dayShifts;
+    const total = countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0);
+    const isCurrentMonth = date.getMonth() === currentMonthStart.getMonth();
+    const isCurrentWeek = iso >= toISODate(currentWeekStart) && iso <= toISODate(addDays(currentWeekStart, 6));
+    const button = document.createElement("button");
+    const shownShifts = dayShifts.slice(0, 3);
+    button.type = "button";
+    button.className = [
+      "month-day",
+      isCurrentMonth ? "" : "outside-month",
+      holiday ? "holiday" : "",
+      isCurrentWeek ? "current-week" : ""
+    ].filter(Boolean).join(" ");
+    button.dataset.monthDate = iso;
+    button.innerHTML = `
+      <div class="month-day-head">
+        <span>${date.getDate()}</span>
+        <strong>${total > 0 ? formatDuration(total) : ""}</strong>
+      </div>
+      <div class="month-day-shifts"></div>
+    `;
+
+    const shiftListForDay = button.querySelector(".month-day-shifts");
+    shownShifts.forEach((shift) => {
+      shiftListForDay.append(makeMonthShiftChip(shift, holiday));
+    });
+
+    if (dayShifts.length > shownShifts.length) {
+      const more = document.createElement("span");
+      more.className = "month-more";
+      more.textContent = `+${dayShifts.length - shownShifts.length}건`;
+      shiftListForDay.append(more);
+    }
+
+    monthCalendar.append(button);
+  });
+}
+
+function makeMonthShiftChip(shift, isExcluded = false) {
+  const color = getTagColor(getShiftTag(shift));
+  const chip = document.createElement("span");
+  chip.className = `month-shift-chip${isExcluded ? " holiday-excluded" : ""}`;
+  chip.style.setProperty("--tag-bg", color.bg);
+  chip.style.setProperty("--tag-border", color.border);
+  chip.style.setProperty("--tag-text", color.text);
+  chip.title = `${shift.title} ${shift.start}-${shift.end}`;
+  chip.textContent = `${shift.start} ${shift.title}`;
+  return chip;
+}
+
+function getDayShifts(date) {
+  return shifts
+    .filter((shift) => shift.date === date)
+    .sort((a, b) => a.start.localeCompare(b.start));
+}
+
 function renderTimeLabels(body) {
   for (let hour = VIEW_START_MINUTES / 60; hour <= VIEW_END_MINUTES / 60; hour += 1) {
     const label = document.createElement("span");
@@ -896,6 +1002,10 @@ function getSnappedTimeFromClientY(body, clientY) {
   return clamp(roundToStep(rawMinutes, SNAP_MINUTES), VIEW_START_MINUTES, VIEW_END_MINUTES - SNAP_MINUTES);
 }
 
+function getDayBody(date) {
+  return calendar.querySelector(`.day-body[data-date="${date}"]`);
+}
+
 function isTimeRangeOccupied(date, start, end) {
   return shifts.some((shift) => (
     shift.date === date
@@ -932,7 +1042,10 @@ function resizeSelectedShift(clientY) {
   const shift = shifts.find((item) => item.id === resizingShift.id);
   if (!shift) return;
 
-  const minute = getSnappedTimeFromClientY(resizingShift.body, clientY);
+  const body = getDayBody(shift.date);
+  if (!body) return;
+
+  const minute = getSnappedTimeFromClientY(body, clientY);
   let start = timeToMinutes(shift.start);
   let end = timeToMinutes(shift.end);
 
@@ -1321,6 +1434,10 @@ function addDays(date, amount) {
   return copy;
 }
 
+function addMonths(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
 function getDayDiff(date, baseDate) {
   const dayMs = 24 * 60 * 60 * 1000;
   return Math.round((startOfDay(date) - startOfDay(baseDate)) / dayMs);
@@ -1330,6 +1447,19 @@ function startOfDay(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
   return copy;
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function getMonthGridDays(monthStart) {
+  const gridStart = startOfWeek(monthStart);
+  const days = [];
+  for (let index = 0; index < 42; index += 1) {
+    days.push(addDays(gridStart, index));
+  }
+  return days;
 }
 
 function toISODate(date) {

@@ -78,6 +78,18 @@
         <div id="calendar" class="calendar"></div>
       </section>
     </section>
+
+    <section class="month-calendar-panel" aria-label="월간 캘린더">
+      <div class="calendar-header">
+        <button id="prevMonth" type="button" class="icon-button" aria-label="이전 달">‹</button>
+        <h2 id="monthCalendarLabel"></h2>
+        <div class="calendar-actions">
+          <button id="thisMonth" type="button" class="secondary">이번 달</button>
+          <button id="nextMonth" type="button" class="icon-button" aria-label="다음 달">›</button>
+        </div>
+      </div>
+      <div id="monthCalendar" class="month-calendar"></div>
+    </section>
   </main>
 
   <template id="shiftItemTemplate">
