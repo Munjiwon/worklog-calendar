@@ -1,0 +1,12 @@
+{
+  "name": "worklog-calendar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Work log calendar with a simple login session",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

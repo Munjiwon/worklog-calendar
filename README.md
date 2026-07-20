@@ -1,17 +1,48 @@
 # 근무일지 캘린더 프로토타입
 
-근무일지 작성을 위해 주간 캘린더에서 근무 시간을 시각적으로 관리하는 정적 웹 프로토타입입니다.
+근무일지 작성을 위해 주간/월간 캘린더에서 근무 시간을 시각적으로 관리하는 웹 프로토타입입니다.
 
 ## 실행 방법
 
-별도 설치나 서버 실행 없이 브라우저에서 `index.html`을 열면 됩니다.
+처음 접속하면 로그인 화면으로 이동합니다.
 
-```text
-/home/jay/worklog-calendar-prototype/index.html
+기본 계정:
+- 아이디: `admin`
+- 비밀번호: `worklog`
+
+### Docker Compose
+
+```bash
+docker compose up -d --build
+```
+
+브라우저에서 `http://localhost:3000`으로 접속합니다.
+
+이미 `3000` 포트를 사용 중이면 호스트 포트를 바꿔 실행합니다.
+
+```bash
+HOST_PORT=3001 docker compose up -d --build
+```
+
+이 경우 `http://localhost:3001`로 접속합니다.
+
+운영 배포 전 `docker-compose.yml`의 `WORKLOG_PASSWORD`, `SESSION_SECRET` 값을 반드시 변경하세요.
+
+### Node 직접 실행
+
+```bash
+npm start
+```
+
+환경변수로 로그인 정보를 바꿀 수 있습니다.
+
+```bash
+WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret npm start
 ```
 
 ## 주요 기능
 
+- 로그인 세션 보호 및 로그아웃
 - 주간 캘린더에서 근무 일정 확인
 - 월간 캘린더에서 한 달 전체 근무 일정 확인
 - 월간 캘린더에서 근무를 드래그해 날짜 이동
@@ -55,7 +86,12 @@
 
 ```text
 worklog-calendar-prototype/
+├── Dockerfile
+├── docker-compose.yml
 ├── index.html
+├── login.html
+├── package.json
+├── server.js
 ├── styles.css
 ├── app.js
 └── README.md
@@ -63,4 +99,4 @@ worklog-calendar-prototype/
 
 ## 참고
 
-현재는 로컬 브라우저에서 동작하는 프로토타입입니다. 여러 기기 동기화, 사용자 계정, 서버 저장 기능은 포함되어 있지 않습니다.
+현재 일정 데이터는 로그인 세션과 별개로 브라우저 `localStorage`에 저장됩니다. 여러 기기 동기화, 사용자별 데이터 저장, 서버 DB 저장 기능은 포함되어 있지 않습니다.

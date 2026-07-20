@@ -58,6 +58,11 @@ button {
   padding: 22px;
 }
 
+.logout-form {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--primary);
@@ -433,6 +438,50 @@ select {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.login-shell {
+  width: min(420px, 100%);
+  padding: 24px;
+}
+
+.login-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  font-size: 28px;
+}
+
+.login-card button[type="submit"] {
+  height: 44px;
+  border-radius: 6px;
+  color: #fff;
+  background: var(--primary);
+  font-weight: 800;
+}
+
+.login-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #7f1d1d;
+  background: #fee2e2;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .shift-list {

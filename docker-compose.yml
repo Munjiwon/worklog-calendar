@@ -1,0 +1,12 @@
+services:
+  worklog-calendar:
+    build: .
+    container_name: worklog-calendar
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      WORKLOG_USERNAME: "admin"
+      WORKLOG_PASSWORD: "worklog"
+      SESSION_SECRET: "replace-this-with-a-long-random-secret"
+    restart: unless-stopped
