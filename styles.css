@@ -829,6 +829,14 @@ button:disabled {
   box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.28);
 }
 
+.month-day.drop-target {
+  position: relative;
+  z-index: 1;
+  outline: 2px dashed var(--primary);
+  outline-offset: -5px;
+  background: #eef6ff;
+}
+
 .month-day.outside-month {
   color: #98a2b3;
   background: #f8fafc;
@@ -883,11 +891,19 @@ button:disabled {
   border: 1px solid var(--tag-border, #008f7a);
   color: var(--tag-text, #1d4b43);
   background: var(--tag-bg, #d9f4ed);
+  cursor: grab;
+  user-select: none;
+}
+
+.month-shift-chip.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
 }
 
 .month-shift-chip.holiday-excluded {
   opacity: 0.58;
   filter: grayscale(0.3);
+  cursor: not-allowed;
 }
 
 .month-more {

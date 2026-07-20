@@ -77,6 +77,7 @@ let tagMealSettings = loadTagMealSettings();
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
+let monthDraggingShift = null;
 let selectedShiftId = null;
 const collapsedTags = new Set();
 
@@ -191,12 +192,30 @@ calendar.addEventListener("click", (event) => {
 });
 
 monthCalendar.addEventListener("click", (event) => {
+  if (event.target.closest(".month-shift-chip")) return;
   const day = event.target.closest("[data-month-date]");
   if (!day) return;
   const date = parseISODate(day.dataset.monthDate);
   currentWeekStart = startOfWeek(date);
   currentMonthStart = startOfMonth(date);
   render();
+});
+
+monthCalendar.addEventListener("mousedown", (event) => {
+  const chip = event.target.closest(".month-shift-chip");
+  if (!chip) return;
+  const shift = shifts.find((item) => item.id === chip.dataset.id);
+  if (!shift || isHoliday(shift.date)) {
+    event.preventDefault();
+    return;
+  }
+
+  event.preventDefault();
+  monthDraggingShift = {
+    id: shift.id
+  };
+  selectedShiftId = shift.id;
+  chip.classList.add("dragging");
 });
 
 shiftList.addEventListener("click", (event) => {
@@ -486,6 +505,10 @@ calendar.addEventListener("mousedown", (event) => {
 });
 
 window.addEventListener("mousemove", (event) => {
+  if (monthDraggingShift) {
+    updateMonthDragTarget(event.clientX, event.clientY);
+    return;
+  }
   if (resizingShift) {
     resizeSelectedShift(event.clientY);
     return;
@@ -502,6 +525,10 @@ window.addEventListener("mousemove", (event) => {
 });
 
 window.addEventListener("mouseup", () => {
+  if (monthDraggingShift) {
+    finishMonthDrag();
+    return;
+  }
   if (resizingShift) {
     resizingShift = null;
     saveShifts();
@@ -861,12 +888,58 @@ function makeMonthShiftChip(shift, isExcluded = false) {
   const color = getTagColor(getShiftTag(shift));
   const chip = document.createElement("span");
   chip.className = `month-shift-chip${isExcluded ? " holiday-excluded" : ""}`;
+  chip.dataset.id = shift.id;
   chip.style.setProperty("--tag-bg", color.bg);
   chip.style.setProperty("--tag-border", color.border);
   chip.style.setProperty("--tag-text", color.text);
   chip.title = `${shift.title} ${shift.start}-${shift.end}`;
   chip.textContent = `${shift.start} ${shift.title}`;
   return chip;
+}
+
+function updateMonthDragTarget(clientX, clientY) {
+  const element = document.elementFromPoint(clientX, clientY);
+  const day = element?.closest("[data-month-date]");
+  if (!day || !monthCalendar.contains(day) || isHoliday(day.dataset.monthDate)) {
+    clearMonthDropTarget();
+    return;
+  }
+  showMonthDropTarget(day);
+}
+
+function finishMonthDrag() {
+  const id = monthDraggingShift.id;
+  const target = monthCalendar.querySelector(".month-day.drop-target");
+  const targetDate = target?.dataset.monthDate;
+  monthDraggingShift = null;
+  monthCalendar.querySelectorAll(".month-shift-chip.dragging").forEach((chip) => {
+    chip.classList.remove("dragging");
+  });
+  clearMonthDropTarget();
+
+  if (!targetDate || isHoliday(targetDate)) return;
+  const shift = shifts.find((item) => item.id === id);
+  if (!shift || shift.date === targetDate) return;
+
+  shifts = shifts.map((item) => (
+    item.id === id ? { ...item, date: targetDate } : item
+  ));
+  selectedShiftId = id;
+  currentWeekStart = startOfWeek(parseISODate(targetDate));
+  currentMonthStart = startOfMonth(parseISODate(targetDate));
+  saveShifts();
+  render();
+}
+
+function showMonthDropTarget(day) {
+  clearMonthDropTarget();
+  day.classList.add("drop-target");
+}
+
+function clearMonthDropTarget() {
+  monthCalendar.querySelectorAll(".month-day.drop-target").forEach((day) => {
+    day.classList.remove("drop-target");
+  });
 }
 
 function getDayShifts(date) {
