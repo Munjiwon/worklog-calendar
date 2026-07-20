@@ -6,9 +6,13 @@
 
 처음 접속하면 로그인 화면으로 이동합니다.
 
-기본 계정:
+첫 실행 시 기본 관리자 계정이 자동 생성됩니다.
+
+기본 관리자 계정:
 - 아이디: `admin`
 - 비밀번호: `1q2w3e4r`
+
+관리자 계정으로 로그인한 뒤 상단 `관리자` 메뉴에서 새 계정을 만들 수 있습니다. 권한은 `일반`, `관리자` 두 종류입니다.
 
 ### Docker Compose
 
@@ -43,6 +47,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 ## 주요 기능
 
 - 로그인 세션 보호 및 로그아웃
+- 관리자 페이지에서 일반/관리자 계정 생성
 - 주간 캘린더에서 근무 일정 확인
 - 월간 캘린더에서 한 달 전체 근무 일정 확인
 - 월간 캘린더에서 근무를 드래그해 날짜 이동
@@ -100,3 +105,4 @@ worklog-calendar-prototype/
 ## 참고
 
 현재 일정 데이터는 로그인 세션과 별개로 브라우저 `localStorage`에 저장됩니다. 여러 기기 동기화, 사용자별 데이터 저장, 서버 DB 저장 기능은 포함되어 있지 않습니다.
+계정 데이터는 서버의 `DATA_DIR` 아래 `users.json`에 저장되며, Docker Compose 실행 시 `worklog-data` 볼륨에 보관됩니다.

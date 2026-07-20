@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>관리자 - 근무일지 캘린더</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell admin-shell">
+    <section class="toolbar" aria-label="관리자 메뉴">
+      <div>
+        <p class="eyebrow">Work Log Calendar</p>
+        <h1>관리자</h1>
+      </div>
+      <div class="toolbar-actions">
+        <a class="secondary link-button" href="/">캘린더</a>
+        <form method="post" action="/logout" class="logout-form">
+          <button type="submit" class="secondary">로그아웃</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="admin-grid">
+      <form id="userForm" class="summary-panel admin-card">
+        <div class="panel-header">
+          <h2>계정 만들기</h2>
+        </div>
+        <p id="userFormMessage" class="login-error hidden"></p>
+        <label>
+          아이디
+          <input id="newUsername" type="text" autocomplete="off" required>
+        </label>
+        <label>
+          비밀번호
+          <input id="newPassword" type="password" autocomplete="new-password" required>
+        </label>
+        <label>
+          권한
+          <select id="newRole">
+            <option value="user">일반</option>
+            <option value="admin">관리자</option>
+          </select>
+        </label>
+        <button type="submit">계정 만들기</button>
+      </form>
+
+      <section class="summary-panel admin-card" aria-label="계정 목록">
+        <div class="panel-header">
+          <h2>계정 목록</h2>
+        </div>
+        <div id="userList" class="user-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="./admin.js"></script>
+</body>
+</html>

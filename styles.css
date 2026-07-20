@@ -63,6 +63,18 @@ button {
   justify-content: flex-end;
 }
 
+.toolbar-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--primary);
@@ -481,6 +493,59 @@ button:disabled {
   color: #7f1d1d;
   background: #fee2e2;
   font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-shell {
+  max-width: 1100px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.admin-card {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 0;
+}
+
+.admin-card button[type="submit"] {
+  height: 42px;
+  border-radius: 6px;
+  color: #fff;
+  background: var(--primary);
+  font-weight: 800;
+}
+
+.user-list {
+  display: grid;
+  gap: 8px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.user-item strong,
+.user-item span {
+  display: block;
+}
+
+.user-item span,
+.user-item time {
+  color: var(--muted);
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1043,7 +1108,8 @@ button:disabled {
 
 @media (max-width: 1100px) {
   .toolbar,
-  .workspace {
+  .workspace,
+  .admin-grid {
     grid-template-columns: 1fr;
   }
 

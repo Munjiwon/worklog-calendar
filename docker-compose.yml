@@ -6,7 +6,13 @@ services:
       - "${HOST_PORT:-3000}:3000"
     environment:
       PORT: "3000"
+      DATA_DIR: "/data"
       WORKLOG_USERNAME: "admin"
       WORKLOG_PASSWORD: "1q2w3e4r"
       SESSION_SECRET: "replace-this-with-a-long-random-secret"
+    volumes:
+      - worklog-data:/data
     restart: unless-stopped
+
+volumes:
+  worklog-data:
