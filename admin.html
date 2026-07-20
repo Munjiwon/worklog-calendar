@@ -62,6 +62,44 @@
     </section>
   </main>
 
+  <div id="editUserModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="editUserModalTitle">
+    <form id="editUserForm" class="modal-card">
+      <div class="modal-header">
+        <h2 id="editUserModalTitle">회원 수정</h2>
+        <button id="closeEditUserModal" type="button" class="icon-button" aria-label="회원 수정 닫기">×</button>
+      </div>
+      <p id="editUserFormMessage" class="login-error hidden"></p>
+      <input id="editUsername" type="hidden">
+      <label>
+        아이디
+        <input id="editUsernameDisplay" type="text" disabled>
+      </label>
+      <label>
+        새 비밀번호
+        <input id="editPassword" type="password" autocomplete="new-password" placeholder="변경하지 않으려면 비워두세요">
+      </label>
+      <label>
+        이름
+        <input id="editName" type="text" autocomplete="off" required>
+      </label>
+      <label>
+        이메일
+        <input id="editEmail" type="email" autocomplete="off" required>
+      </label>
+      <label>
+        권한
+        <select id="editRole">
+          <option value="user">일반</option>
+          <option value="admin">관리자</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="secondary" data-edit-user-cancel>취소</button>
+        <button type="submit">저장</button>
+      </div>
+    </form>
+  </div>
+
   <script src="./admin.js"></script>
 </body>
 </html>

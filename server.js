@@ -99,13 +99,7 @@ const server = http.createServer(async (request, response) => {
       if (!requireAdmin(response, session)) return;
       const users = await loadUsers();
       sendJson(response, 200, {
-        users: users.map((user) => ({
-          createdAt: user.createdAt,
-          email: user.email || "",
-          name: user.name || "",
-          role: user.role,
-          username: user.username
-        }))
+        users: users.map(publicUser)
       });
       return;
     }
@@ -113,6 +107,12 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "POST" && pathname === "/api/users") {
       if (!requireAdmin(response, session)) return;
       await handleCreateUser(request, response);
+      return;
+    }
+
+    if (request.method === "PUT" && pathname.startsWith("/api/users/")) {
+      if (!requireAdmin(response, session)) return;
+      await handleUpdateUser(request, response, session, decodeURIComponent(pathname.slice("/api/users/".length)));
       return;
     }
 
@@ -250,6 +250,50 @@ async function handleCreateUser(request, response) {
       role: user.role,
       username: user.username
     }
+  });
+}
+
+async function handleUpdateUser(request, response, session, username) {
+  const existing = await findUser(username);
+  if (!existing) {
+    sendJson(response, 404, { error: "사용자를 찾을 수 없습니다." });
+    return;
+  }
+
+  const body = await readJsonBody(request);
+  const userData = validateUserUpdateInput(body, existing);
+
+  if (userData.error) {
+    sendJson(response, 400, { error: getUserInputErrorMessage(userData.error) });
+    return;
+  }
+
+  const duplicate = await findDuplicateUserEmail(userData.user.email, existing.username);
+  if (duplicate) {
+    sendJson(response, 409, { error: getUserInputErrorMessage(duplicate) });
+    return;
+  }
+
+  if (existing.role === "admin" && userData.user.role !== "admin" && await isLastAdmin(existing.username)) {
+    sendJson(response, 400, { error: "마지막 관리자 계정의 권한은 일반으로 변경할 수 없습니다." });
+    return;
+  }
+
+  const user = {
+    ...existing,
+    email: userData.user.email,
+    name: userData.user.name,
+    passwordHash: userData.user.password ? hashPassword(userData.user.password) : existing.passwordHash,
+    role: userData.user.role
+  };
+  await updateUser(user);
+
+  if (session.sub.toLowerCase() === user.username.toLowerCase()) {
+    setSessionCookie(response, user);
+  }
+
+  sendJson(response, 200, {
+    user: publicUser(user)
   });
 }
 
@@ -519,6 +563,37 @@ async function createUser(user) {
   await saveUsers(users);
 }
 
+async function updateUser(user) {
+  if (dbPool) {
+    await dbPool.query(
+      "UPDATE users SET password_hash = $1, name = $2, email = $3, role = $4 WHERE lower(username) = lower($5)",
+      [user.passwordHash, user.name, user.email, user.role, user.username]
+    );
+    return;
+  }
+
+  const users = await loadUsers();
+  const index = users.findIndex((item) => item.username.toLowerCase() === user.username.toLowerCase());
+  if (index === -1) return;
+  users[index] = user;
+  await saveUsers(users);
+}
+
+async function isLastAdmin(username) {
+  const users = await loadUsers();
+  return users.filter((user) => user.role === "admin" && user.username.toLowerCase() !== username.toLowerCase()).length === 0;
+}
+
+function publicUser(user) {
+  return {
+    createdAt: user.createdAt,
+    email: user.email || "",
+    name: user.name || "",
+    role: user.role,
+    username: user.username
+  };
+}
+
 async function loadCalendarData(username) {
   return (await loadCalendarDataRecord(username)).data;
 }
@@ -686,12 +761,44 @@ function validateUserInput(input) {
   };
 }
 
+function validateUserUpdateInput(input) {
+  const password = String(input.password || "");
+  const name = normalizeName(input.name);
+  const email = normalizeEmail(input.email);
+  const role = String(input.role || "user");
+
+  if (password && password.length < 6) return { error: "invalid_password" };
+  if (!isValidName(name)) return { error: "invalid_name" };
+  if (!isValidEmail(email)) return { error: "invalid_email" };
+  if (!ROLES.has(role)) return { error: "invalid_role" };
+
+  return {
+    user: {
+      email,
+      name,
+      password,
+      role
+    }
+  };
+}
+
 async function findDuplicateUser(username, email) {
   const users = await loadUsers();
   if (users.some((user) => user.username.toLowerCase() === username.toLowerCase())) {
     return "duplicate_username";
   }
   if (users.some((user) => String(user.email || "").toLowerCase() === email.toLowerCase())) {
+    return "duplicate_email";
+  }
+  return "";
+}
+
+async function findDuplicateUserEmail(email, currentUsername) {
+  const users = await loadUsers();
+  if (users.some((user) => (
+    user.username.toLowerCase() !== currentUsername.toLowerCase()
+    && String(user.email || "").toLowerCase() === email.toLowerCase()
+  ))) {
     return "duplicate_email";
   }
   return "";

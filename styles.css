@@ -565,6 +565,13 @@ button:disabled {
   font-weight: 800;
 }
 
+.user-item-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
 .shift-list {
   display: grid;
   gap: 10px;
@@ -1170,6 +1177,12 @@ button:disabled {
 
   .target-result {
     text-align: left;
+  }
+
+  .user-item,
+  .user-item-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .calendar {

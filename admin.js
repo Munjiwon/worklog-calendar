@@ -6,6 +6,18 @@ const newPassword = document.querySelector("#newPassword");
 const newName = document.querySelector("#newName");
 const newEmail = document.querySelector("#newEmail");
 const newRole = document.querySelector("#newRole");
+const editUserModal = document.querySelector("#editUserModal");
+const editUserForm = document.querySelector("#editUserForm");
+const editUserFormMessage = document.querySelector("#editUserFormMessage");
+const closeEditUserModal = document.querySelector("#closeEditUserModal");
+const editUsername = document.querySelector("#editUsername");
+const editUsernameDisplay = document.querySelector("#editUsernameDisplay");
+const editPassword = document.querySelector("#editPassword");
+const editName = document.querySelector("#editName");
+const editEmail = document.querySelector("#editEmail");
+const editRole = document.querySelector("#editRole");
+
+let users = [];
 
 loadUsers();
 
@@ -40,6 +52,49 @@ userForm.addEventListener("submit", async (event) => {
   await loadUsers();
 });
 
+userList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-edit-user]");
+  if (!button) return;
+  const user = users.find((item) => item.username === button.dataset.editUser);
+  if (user) openEditUserModal(user);
+});
+
+editUserForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setEditMessage("");
+
+  const payload = {
+    email: editEmail.value.trim(),
+    name: editName.value.trim(),
+    password: editPassword.value,
+    role: editRole.value
+  };
+
+  const response = await fetch(`/api/users/${encodeURIComponent(editUsername.value)}`, {
+    body: JSON.stringify(payload),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PUT"
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    setEditMessage(result.error || "회원 정보를 수정할 수 없습니다.");
+    return;
+  }
+
+  closeEditModal();
+  await loadUsers();
+});
+
+closeEditUserModal.addEventListener("click", closeEditModal);
+editUserModal.addEventListener("click", (event) => {
+  if (event.target === editUserModal || event.target.closest("[data-edit-user-cancel]")) {
+    closeEditModal();
+  }
+});
+
 async function loadUsers() {
   const response = await fetch("/api/users");
   if (response.status === 401 || response.status === 403) {
@@ -48,7 +103,8 @@ async function loadUsers() {
   }
 
   const result = await response.json();
-  renderUsers(result.users || []);
+  users = result.users || [];
+  renderUsers(users);
 }
 
 function renderUsers(users) {
@@ -63,14 +119,41 @@ function renderUsers(users) {
         <strong>${escapeHtml(user.username)}</strong>
         <span>${escapeHtml(user.name || "-")} · ${escapeHtml(user.email || "-")} · ${formatRole(user.role)}</span>
       </div>
-      <time>${formatDateTime(user.createdAt)}</time>
+      <div class="user-item-actions">
+        <time>${formatDateTime(user.createdAt)}</time>
+        <button type="button" class="action-button edit-button" data-edit-user="${escapeHtml(user.username)}">수정</button>
+      </div>
     </article>
   `).join("");
+}
+
+function openEditUserModal(user) {
+  setEditMessage("");
+  editUsername.value = user.username;
+  editUsernameDisplay.value = user.username;
+  editPassword.value = "";
+  editName.value = user.name || "";
+  editEmail.value = user.email || "";
+  editRole.value = user.role;
+  editUserModal.classList.remove("hidden");
+  editName.focus();
+  editName.select();
+}
+
+function closeEditModal() {
+  editUserModal.classList.add("hidden");
+  editUserForm.reset();
+  setEditMessage("");
 }
 
 function setMessage(message) {
   userFormMessage.textContent = message;
   userFormMessage.classList.toggle("hidden", !message);
+}
+
+function setEditMessage(message) {
+  editUserFormMessage.textContent = message;
+  editUserFormMessage.classList.toggle("hidden", !message);
 }
 
 function formatRole(role) {
