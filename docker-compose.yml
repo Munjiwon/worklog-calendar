@@ -7,6 +7,6 @@ services:
     environment:
       PORT: "3000"
       WORKLOG_USERNAME: "admin"
-      WORKLOG_PASSWORD: "worklog"
+      WORKLOG_PASSWORD: "1q2w3e4r"
       SESSION_SECRET: "replace-this-with-a-long-random-secret"
     restart: unless-stopped

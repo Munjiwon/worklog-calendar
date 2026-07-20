@@ -8,7 +8,7 @@
 
 기본 계정:
 - 아이디: `admin`
-- 비밀번호: `worklog`
+- 비밀번호: `1q2w3e4r`
 
 ### Docker Compose
 
