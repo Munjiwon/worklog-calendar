@@ -129,6 +129,10 @@ select {
   display: none;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .secondary {
   color: var(--text);
   background: #edf1f7;
