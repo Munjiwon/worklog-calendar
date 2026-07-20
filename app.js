@@ -1181,7 +1181,7 @@ function openTagCopyModal() {
       label.style.setProperty("--tag-text", color.text);
       checkbox.type = "checkbox";
       checkbox.value = tag;
-      checkbox.checked = true;
+      checkbox.checked = false;
       pill.className = "tag-pill";
       pill.textContent = tag;
       amount.textContent = `${count}건`;
