@@ -445,6 +445,24 @@ select {
   gap: 8px;
 }
 
+.calendar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.calendar-title-row h2 {
+  white-space: nowrap;
+}
+
+.calendar-title-row .secondary {
+  height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .calendar-actions .secondary {
   height: 38px;
   padding: 0 12px;
@@ -1151,9 +1169,12 @@ button:disabled {
     flex-wrap: wrap;
   }
 
-  .calendar-header h2 {
+  .calendar-title-row {
     order: -1;
     width: 100%;
+  }
+
+  .calendar-title-row h2 {
     text-align: center;
   }
 

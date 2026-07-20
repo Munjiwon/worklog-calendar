@@ -45,6 +45,7 @@ const clearAll = document.querySelector("#clearAll");
 const adminLink = document.querySelector("#adminLink");
 const prevWeek = document.querySelector("#prevWeek");
 const nextWeek = document.querySelector("#nextWeek");
+const todayWeek = document.querySelector("#todayWeek");
 const copyWeek = document.querySelector("#copyWeek");
 const pasteWeek = document.querySelector("#pasteWeek");
 const copyTagsNextWeek = document.querySelector("#copyTagsNextWeek");
@@ -112,6 +113,13 @@ prevWeek.addEventListener("click", () => {
 nextWeek.addEventListener("click", () => {
   currentWeekStart = addDays(currentWeekStart, 7);
   currentMonthStart = startOfMonth(currentWeekStart);
+  render();
+});
+
+todayWeek.addEventListener("click", () => {
+  const today = new Date();
+  currentWeekStart = startOfWeek(today);
+  currentMonthStart = startOfMonth(today);
   render();
 });
 
