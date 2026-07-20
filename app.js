@@ -58,6 +58,7 @@ const tagCopyModal = document.querySelector("#tagCopyModal");
 const tagCopyForm = document.querySelector("#tagCopyForm");
 const closeTagCopyModal = document.querySelector("#closeTagCopyModal");
 const copyTagChoices = document.querySelector("#copyTagChoices");
+const selectAllCopyTags = document.querySelector("#selectAllCopyTags");
 const editId = document.querySelector("#editId");
 const editTitle = document.querySelector("#editTitle");
 const editTag = document.querySelector("#editTag");
@@ -291,6 +292,12 @@ tagCopyModal.addEventListener("click", (event) => {
   if (event.target === tagCopyModal || event.target.closest("[data-tag-copy-cancel]")) {
     closeTagCopyModalDialog();
   }
+});
+
+selectAllCopyTags.addEventListener("click", () => {
+  copyTagChoices.querySelectorAll("input[type='checkbox']").forEach((input) => {
+    input.checked = true;
+  });
 });
 
 tagCopyForm.addEventListener("submit", (event) => {

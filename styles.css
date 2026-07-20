@@ -327,6 +327,17 @@ select {
   gap: 8px;
 }
 
+.tag-copy-tools {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tag-copy-tools .secondary {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .tag-copy-option {
   display: flex;
   grid-template-columns: none;
