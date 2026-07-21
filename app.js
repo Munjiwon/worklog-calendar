@@ -84,6 +84,7 @@ let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
 let monthDraggingShift = null;
+let suppressMonthShiftClick = false;
 let selectedShiftId = null;
 let calendarDataSaveTimer = null;
 const collapsedTags = new Set();
@@ -195,7 +196,16 @@ calendar.addEventListener("click", (event) => {
 });
 
 monthCalendar.addEventListener("click", (event) => {
-  if (event.target.closest(".month-shift-chip")) return;
+  const chip = event.target.closest(".month-shift-chip");
+  if (chip) {
+    if (suppressMonthShiftClick) {
+      suppressMonthShiftClick = false;
+      return;
+    }
+    const shift = shifts.find((item) => item.id === chip.dataset.id);
+    if (shift) openEditModal(shift);
+    return;
+  }
   const day = event.target.closest("[data-month-date]");
   if (!day) return;
   const date = parseISODate(day.dataset.monthDate);
@@ -215,7 +225,10 @@ monthCalendar.addEventListener("mousedown", (event) => {
 
   event.preventDefault();
   monthDraggingShift = {
-    id: shift.id
+    hasMoved: false,
+    id: shift.id,
+    startX: event.clientX,
+    startY: event.clientY
   };
   selectedShiftId = shift.id;
   chip.classList.add("dragging");
@@ -515,6 +528,9 @@ calendar.addEventListener("mousedown", (event) => {
 
 window.addEventListener("mousemove", (event) => {
   if (monthDraggingShift) {
+    const distance = Math.hypot(event.clientX - monthDraggingShift.startX, event.clientY - monthDraggingShift.startY);
+    if (distance < 5 && !monthDraggingShift.hasMoved) return;
+    monthDraggingShift.hasMoved = true;
     updateMonthDragTarget(event.clientX, event.clientY);
     return;
   }
@@ -1120,14 +1136,17 @@ function updateMonthDragTarget(clientX, clientY) {
 
 function finishMonthDrag() {
   const id = monthDraggingShift.id;
+  const hasMoved = monthDraggingShift.hasMoved;
   const target = monthCalendar.querySelector(".month-day.drop-target");
   const targetDate = target?.dataset.monthDate;
+  suppressMonthShiftClick = hasMoved;
   monthDraggingShift = null;
   monthCalendar.querySelectorAll(".month-shift-chip.dragging").forEach((chip) => {
     chip.classList.remove("dragging");
   });
   clearMonthDropTarget();
 
+  if (!hasMoved) return;
   if (!targetDate || isHoliday(targetDate)) return;
   const shift = shifts.find((item) => item.id === id);
   if (!shift || shift.date === targetDate) return;
