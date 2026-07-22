@@ -41,6 +41,7 @@ const shiftCount = document.querySelector("#shiftCount");
 const monthSummary = document.querySelector("#monthSummary");
 const mealSettings = document.querySelector("#mealSettings");
 const tagSummary = document.querySelector("#tagSummary");
+const createShift = document.querySelector("#createShift");
 const clearAll = document.querySelector("#clearAll");
 const adminLink = document.querySelector("#adminLink");
 const prevWeek = document.querySelector("#prevWeek");
@@ -57,6 +58,7 @@ const monthCalendarLabel = document.querySelector("#monthCalendarLabel");
 const editModal = document.querySelector("#editModal");
 const editForm = document.querySelector("#editForm");
 const closeEditModal = document.querySelector("#closeEditModal");
+const editModalTitle = document.querySelector("#editModalTitle");
 const copyModal = document.querySelector("#copyModal");
 const copyForm = document.querySelector("#copyForm");
 const closeCopyModal = document.querySelector("#closeCopyModal");
@@ -96,6 +98,10 @@ let calendarDataSaveTimer = null;
 const collapsedTags = new Set();
 
 initializeApp();
+
+createShift.addEventListener("click", () => {
+  openCreateModal();
+});
 
 clearAll.addEventListener("click", () => {
   const weekShifts = getWeekShifts(currentWeekStart);
@@ -292,10 +298,18 @@ editForm.addEventListener("submit", (event) => {
   }
 
   ensureTagColor(tag);
-  shifts = shifts.map((shift) => (
-    shift.id === id ? { ...shift, title, tag, date, start, end } : shift
-  ));
-  selectedShiftId = id;
+  if (id) {
+    shifts = shifts.map((shift) => (
+      shift.id === id ? { ...shift, title, tag, date, start, end } : shift
+    ));
+    selectedShiftId = id;
+  } else {
+    const shift = makeShift(title, tag, date, start, end);
+    shifts.push(shift);
+    selectedShiftId = shift.id;
+  }
+  currentWeekStart = startOfWeek(parseISODate(date));
+  currentMonthStart = startOfMonth(parseISODate(date));
   saveTagColors();
   saveShifts();
   closeModal();
@@ -1397,6 +1411,7 @@ function resizeSelectedShift(clientY) {
 }
 
 function openEditModal(shift) {
+  editModalTitle.textContent = "근무 수정";
   editId.value = shift.id;
   editTitle.value = shift.title;
   editTag.value = getShiftTag(shift);
@@ -1408,6 +1423,21 @@ function openEditModal(shift) {
   editTitle.focus();
   editTitle.select();
   render();
+}
+
+function openCreateModal() {
+  editModalTitle.textContent = "근무 등록";
+  editId.value = "";
+  editTitle.value = "새 근무";
+  editTag.value = DEFAULT_TAG;
+  editDate.value = toISODate(currentWeekStart);
+  editStart.value = "09:00";
+  editEnd.value = "18:00";
+  selectedShiftId = null;
+  editModal.classList.remove("hidden");
+  editTitle.focus();
+  editTitle.select();
+  renderTagControls();
 }
 
 function closeModal() {

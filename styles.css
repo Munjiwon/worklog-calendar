@@ -439,6 +439,13 @@ select {
   margin-bottom: 14px;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .calendar-actions {
   display: flex;
   align-items: center;
