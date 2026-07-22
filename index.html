@@ -158,6 +158,25 @@
     </form>
   </div>
 
+  <div id="copyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="copyModalTitle">
+    <form id="copyForm" class="modal-card">
+      <div class="modal-header">
+        <h2 id="copyModalTitle">근무 복사</h2>
+        <button id="closeCopyModal" type="button" class="icon-button" aria-label="복사 닫기">×</button>
+      </div>
+      <input id="copyId" type="hidden">
+      <p id="copySummary" class="copy-summary"></p>
+      <label>
+        복사할 날짜
+        <input id="copyDate" type="date" required>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="secondary" data-copy-cancel>취소</button>
+        <button type="submit">복사</button>
+      </div>
+    </form>
+  </div>
+
   <div id="tagCopyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="tagCopyModalTitle">
     <form id="tagCopyForm" class="modal-card">
       <div class="modal-header">

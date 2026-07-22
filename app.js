@@ -57,6 +57,9 @@ const monthCalendarLabel = document.querySelector("#monthCalendarLabel");
 const editModal = document.querySelector("#editModal");
 const editForm = document.querySelector("#editForm");
 const closeEditModal = document.querySelector("#closeEditModal");
+const copyModal = document.querySelector("#copyModal");
+const copyForm = document.querySelector("#copyForm");
+const closeCopyModal = document.querySelector("#closeCopyModal");
 const tagCopyModal = document.querySelector("#tagCopyModal");
 const tagCopyForm = document.querySelector("#tagCopyForm");
 const closeTagCopyModal = document.querySelector("#closeTagCopyModal");
@@ -70,6 +73,9 @@ const editTagPalette = document.querySelector("#editTagPalette");
 const editDate = document.querySelector("#editDate");
 const editStart = document.querySelector("#editStart");
 const editEnd = document.querySelector("#editEnd");
+const copyId = document.querySelector("#copyId");
+const copyDate = document.querySelector("#copyDate");
+const copySummary = document.querySelector("#copySummary");
 
 let currentWeekStart = startOfWeek(new Date());
 let currentMonthStart = startOfMonth(currentWeekStart);
@@ -263,7 +269,8 @@ shiftList.addEventListener("click", (event) => {
   }
 
   if (button.dataset.action === "copy") {
-    shifts.push(makeShift(`${shift.title} 복사`, getShiftTag(shift), shift.date, shift.start, shift.end));
+    openCopyModal(shift);
+    return;
   }
 
   saveShifts();
@@ -299,6 +306,27 @@ closeEditModal.addEventListener("click", closeModal);
 editModal.addEventListener("click", (event) => {
   if (event.target === editModal || event.target.closest("[data-modal-cancel]")) {
     closeModal();
+  }
+});
+
+copyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const shift = shifts.find((item) => item.id === copyId.value);
+  if (!shift || !copyDate.value) return;
+  const copied = makeShift(`${shift.title} 복사`, getShiftTag(shift), copyDate.value, shift.start, shift.end);
+  shifts.push(copied);
+  selectedShiftId = copied.id;
+  currentWeekStart = startOfWeek(parseISODate(copied.date));
+  currentMonthStart = startOfMonth(parseISODate(copied.date));
+  saveShifts();
+  closeCopyModalDialog();
+  render();
+});
+
+closeCopyModal.addEventListener("click", closeCopyModalDialog);
+copyModal.addEventListener("click", (event) => {
+  if (event.target === copyModal || event.target.closest("[data-copy-cancel]")) {
+    closeCopyModalDialog();
   }
 });
 
@@ -405,11 +433,15 @@ document.addEventListener("keydown", (event) => {
     closeModal();
     return;
   }
+  if (event.key === "Escape" && !copyModal.classList.contains("hidden")) {
+    closeCopyModalDialog();
+    return;
+  }
   if (event.key === "Escape" && !tagCopyModal.classList.contains("hidden")) {
     closeTagCopyModalDialog();
     return;
   }
-  if (!editModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden")) return;
+  if (!editModal.classList.contains("hidden") || !copyModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden")) return;
   if (event.key !== "Delete" || !selectedShiftId) return;
   if (isEditableElement(event.target)) return;
 
@@ -1381,6 +1413,20 @@ function openEditModal(shift) {
 function closeModal() {
   editModal.classList.add("hidden");
   editForm.reset();
+}
+
+function openCopyModal(shift) {
+  copyId.value = shift.id;
+  copyDate.value = shift.date;
+  copySummary.textContent = `${shift.title} · ${formatDate(parseISODate(shift.date))} ${shift.start}-${shift.end}`;
+  copyModal.classList.remove("hidden");
+  copyDate.focus();
+}
+
+function closeCopyModalDialog() {
+  copyModal.classList.add("hidden");
+  copyForm.reset();
+  copySummary.textContent = "";
 }
 
 function openTagCopyModal() {
