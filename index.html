@@ -67,6 +67,7 @@
           <h2>일정 목록</h2>
           <div class="panel-actions">
             <button id="createShift" type="button" class="secondary">일정 등록</button>
+            <button id="importWorklogPdf" type="button" class="secondary">근무일지 업로드</button>
             <button id="clearAll" type="button" class="secondary">이번 주 삭제</button>
           </div>
         </div>
@@ -176,6 +177,30 @@
       <div class="modal-actions">
         <button type="button" class="secondary" data-copy-cancel>취소</button>
         <button type="submit">복사</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="pdfImportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pdfImportModalTitle">
+    <form id="pdfImportForm" class="modal-card">
+      <div class="modal-header">
+        <h2 id="pdfImportModalTitle">근무일지 업로드</h2>
+        <button id="closePdfImportModal" type="button" class="icon-button" aria-label="근무일지 업로드 닫기">×</button>
+      </div>
+      <p id="pdfImportMessage" class="login-error hidden"></p>
+      <label>
+        PDF 파일
+        <input id="pdfImportFile" type="file" accept="application/pdf" required>
+      </label>
+      <label>
+        적용할 태그
+        <input id="pdfImportTag" type="text" required>
+      </label>
+      <div id="pdfImportTagChoices" class="tag-choices" aria-label="가져올 일정에 적용할 태그"></div>
+      <div id="pdfImportPreview" class="pdf-import-preview empty-state compact">PDF 파일을 선택하면 가져올 일정이 표시됩니다.</div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" data-pdf-import-cancel>취소</button>
+        <button id="pdfImportSubmit" type="submit" disabled>가져오기</button>
       </div>
     </form>
   </div>

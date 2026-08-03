@@ -42,6 +42,7 @@ const monthSummary = document.querySelector("#monthSummary");
 const mealSettings = document.querySelector("#mealSettings");
 const tagSummary = document.querySelector("#tagSummary");
 const createShift = document.querySelector("#createShift");
+const importWorklogPdf = document.querySelector("#importWorklogPdf");
 const clearAll = document.querySelector("#clearAll");
 const adminLink = document.querySelector("#adminLink");
 const prevWeek = document.querySelector("#prevWeek");
@@ -62,6 +63,15 @@ const editModalTitle = document.querySelector("#editModalTitle");
 const copyModal = document.querySelector("#copyModal");
 const copyForm = document.querySelector("#copyForm");
 const closeCopyModal = document.querySelector("#closeCopyModal");
+const pdfImportModal = document.querySelector("#pdfImportModal");
+const pdfImportForm = document.querySelector("#pdfImportForm");
+const closePdfImportModal = document.querySelector("#closePdfImportModal");
+const pdfImportMessage = document.querySelector("#pdfImportMessage");
+const pdfImportFile = document.querySelector("#pdfImportFile");
+const pdfImportTag = document.querySelector("#pdfImportTag");
+const pdfImportTagChoices = document.querySelector("#pdfImportTagChoices");
+const pdfImportPreview = document.querySelector("#pdfImportPreview");
+const pdfImportSubmit = document.querySelector("#pdfImportSubmit");
 const tagCopyModal = document.querySelector("#tagCopyModal");
 const tagCopyForm = document.querySelector("#tagCopyForm");
 const closeTagCopyModal = document.querySelector("#closeTagCopyModal");
@@ -94,6 +104,7 @@ let resizingShift = null;
 let monthDraggingShift = null;
 let suppressMonthShiftClick = false;
 let selectedShiftId = null;
+let pdfImportEntries = [];
 let calendarDataSaveTimer = null;
 const collapsedTags = new Set();
 
@@ -102,6 +113,8 @@ initializeApp();
 createShift.addEventListener("click", () => {
   openCreateModal();
 });
+
+importWorklogPdf.addEventListener("click", openPdfImportModal);
 
 clearAll.addEventListener("click", () => {
   const weekShifts = getWeekShifts(currentWeekStart);
@@ -344,6 +357,25 @@ copyModal.addEventListener("click", (event) => {
   }
 });
 
+pdfImportFile.addEventListener("change", parseSelectedWorklogPdf);
+pdfImportTag.addEventListener("input", renderPdfImportTagChoices);
+pdfImportTagChoices.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pdf-import-tag]");
+  if (!button) return;
+  pdfImportTag.value = button.dataset.pdfImportTag;
+  renderPdfImportTagChoices();
+});
+pdfImportForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  importParsedWorklogEntries();
+});
+closePdfImportModal.addEventListener("click", closePdfImportModalDialog);
+pdfImportModal.addEventListener("click", (event) => {
+  if (event.target === pdfImportModal || event.target.closest("[data-pdf-import-cancel]")) {
+    closePdfImportModalDialog();
+  }
+});
+
 closeTagCopyModal.addEventListener("click", closeTagCopyModalDialog);
 tagCopyModal.addEventListener("click", (event) => {
   if (event.target === tagCopyModal || event.target.closest("[data-tag-copy-cancel]")) {
@@ -451,11 +483,15 @@ document.addEventListener("keydown", (event) => {
     closeCopyModalDialog();
     return;
   }
+  if (event.key === "Escape" && !pdfImportModal.classList.contains("hidden")) {
+    closePdfImportModalDialog();
+    return;
+  }
   if (event.key === "Escape" && !tagCopyModal.classList.contains("hidden")) {
     closeTagCopyModalDialog();
     return;
   }
-  if (!editModal.classList.contains("hidden") || !copyModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden")) return;
+  if (!editModal.classList.contains("hidden") || !copyModal.classList.contains("hidden") || !pdfImportModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden")) return;
   if (event.key !== "Delete" || !selectedShiftId) return;
   if (isEditableElement(event.target)) return;
 
@@ -1457,6 +1493,134 @@ function closeCopyModalDialog() {
   copyModal.classList.add("hidden");
   copyForm.reset();
   copySummary.textContent = "";
+}
+
+function openPdfImportModal() {
+  pdfImportEntries = [];
+  pdfImportForm.reset();
+  pdfImportTag.value = inferDefaultImportTag();
+  setPdfImportMessage("");
+  renderPdfImportTagChoices();
+  renderPdfImportPreview();
+  pdfImportSubmit.disabled = true;
+  pdfImportModal.classList.remove("hidden");
+  pdfImportFile.focus();
+}
+
+function closePdfImportModalDialog() {
+  pdfImportModal.classList.add("hidden");
+  pdfImportEntries = [];
+  pdfImportForm.reset();
+  setPdfImportMessage("");
+  renderPdfImportPreview();
+}
+
+async function parseSelectedWorklogPdf() {
+  const file = pdfImportFile.files?.[0];
+  pdfImportEntries = [];
+  pdfImportSubmit.disabled = true;
+  setPdfImportMessage("");
+
+  if (!file) {
+    renderPdfImportPreview();
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  pdfImportPreview.className = "pdf-import-preview empty-state compact";
+  pdfImportPreview.textContent = "PDF 파일을 분석하는 중입니다.";
+
+  try {
+    const response = await fetch("/api/worklog-pdf/parse", {
+      body: formData,
+      method: "POST"
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      setPdfImportMessage(result.error || "근무일지를 분석할 수 없습니다.");
+      renderPdfImportPreview();
+      return;
+    }
+
+    pdfImportEntries = result.entries || [];
+    pdfImportSubmit.disabled = pdfImportEntries.length === 0;
+    renderPdfImportPreview();
+  } catch {
+    setPdfImportMessage("근무일지를 분석할 수 없습니다.");
+    renderPdfImportPreview();
+  }
+}
+
+function importParsedWorklogEntries() {
+  const tag = normalizeTag(pdfImportTag.value);
+  if (pdfImportEntries.length === 0) {
+    setPdfImportMessage("가져올 일정이 없습니다.");
+    return;
+  }
+
+  ensureTagColor(tag);
+  const imported = pdfImportEntries.map((entry) => makeShift(
+    entry.title,
+    tag,
+    entry.date,
+    entry.start,
+    entry.end
+  ));
+  shifts = [...shifts, ...imported];
+  selectedShiftId = imported[0]?.id || null;
+  if (imported[0]) {
+    currentWeekStart = startOfWeek(parseISODate(imported[0].date));
+    currentMonthStart = startOfMonth(parseISODate(imported[0].date));
+  }
+  saveTagColors();
+  saveShifts();
+  closePdfImportModalDialog();
+  render();
+  alert(`${imported.length}건의 근무일지를 가져왔습니다.`);
+}
+
+function renderPdfImportPreview() {
+  if (pdfImportEntries.length === 0) {
+    pdfImportPreview.className = "pdf-import-preview empty-state compact";
+    pdfImportPreview.textContent = "PDF 파일을 선택하면 가져올 일정이 표시됩니다.";
+    return;
+  }
+
+  pdfImportPreview.className = "pdf-import-preview";
+  pdfImportPreview.innerHTML = `
+    <div class="pdf-import-preview-head">
+      <strong>${pdfImportEntries.length}건</strong>
+      <span>${escapeHtml(pdfImportEntries[0].date)} - ${escapeHtml(pdfImportEntries.at(-1).date)}</span>
+    </div>
+    <div class="pdf-import-list">
+      ${pdfImportEntries.map((entry) => `
+        <article class="pdf-import-item">
+          <strong>${escapeHtml(entry.date)} ${escapeHtml(entry.start)}-${escapeHtml(entry.end)}</strong>
+          <span>${escapeHtml(entry.title)}</span>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderPdfImportTagChoices() {
+  const currentTag = normalizeTag(pdfImportTag.value);
+  pdfImportTagChoices.innerHTML = getKnownTags().map((tag) => {
+    const color = getTagColor(tag);
+    const selected = tag === currentTag ? " selected" : "";
+    return `<button type="button" class="tag-choice${selected}" data-pdf-import-tag="${escapeHtml(tag)}" style="--tag-bg: ${color.bg}; --tag-border: ${color.border}; --tag-text: ${color.text};"><span>${escapeHtml(tag)}</span></button>`;
+  }).join("");
+}
+
+function inferDefaultImportTag() {
+  const tags = getKnownTags();
+  return tags.find((tag) => tag.replace(/\s+/g, "").toLowerCase().includes("피지컬ai")) || tags[0] || DEFAULT_TAG;
+}
+
+function setPdfImportMessage(message) {
+  pdfImportMessage.textContent = message;
+  pdfImportMessage.classList.toggle("hidden", !message);
 }
 
 function openTagCopyModal() {

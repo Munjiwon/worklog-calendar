@@ -3,6 +3,7 @@ const fs = require("fs/promises");
 const http = require("http");
 const path = require("path");
 const { Pool } = require("pg");
+const pdfParse = require("pdf-parse");
 const querystring = require("querystring");
 
 const ROOT = __dirname;
@@ -131,6 +132,15 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       await handleSaveCalendarData(request, response, session);
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/worklog-pdf/parse") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      await handleParseWorklogPdf(request, response);
       return;
     }
 
@@ -304,7 +314,30 @@ async function handleSaveCalendarData(request, response, session) {
   sendJson(response, 200, { ok: true });
 }
 
-async function readBody(request, maxBytes = 1_000_000) {
+async function handleParseWorklogPdf(request, response) {
+  const body = await readRequestBuffer(request, 8_000_000);
+  const form = parseMultipartFormData(request.headers["content-type"] || "", body);
+  const file = form.files.find((item) => item.name === "file") || form.files[0];
+  if (!file || file.data.length === 0) {
+    sendJson(response, 400, { error: "PDF 파일을 선택해주세요." });
+    return;
+  }
+
+  try {
+    const parsed = await pdfParse(file.data);
+    const entries = parseWorklogEntries(parsed.text || "");
+    if (entries.length === 0) {
+      sendJson(response, 400, { error: "근무일지에서 가져올 일정을 찾지 못했습니다." });
+      return;
+    }
+    sendJson(response, 200, { entries });
+  } catch (error) {
+    console.error(error);
+    sendJson(response, 400, { error: "PDF 파일을 읽을 수 없습니다." });
+  }
+}
+
+async function readRequestBuffer(request, maxBytes = 1_000_000) {
   const chunks = [];
   let size = 0;
 
@@ -314,7 +347,11 @@ async function readBody(request, maxBytes = 1_000_000) {
     chunks.push(chunk);
   }
 
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
+}
+
+async function readBody(request, maxBytes = 1_000_000) {
+  return (await readRequestBuffer(request, maxBytes)).toString("utf8");
 }
 
 async function readJsonBody(request, maxBytes) {
@@ -696,6 +733,126 @@ function normalizeWeekClipboardItem(item) {
 
 function normalizePlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function parseMultipartFormData(contentType, body) {
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!boundaryMatch) {
+    return { fields: [], files: [] };
+  }
+
+  const boundary = Buffer.from(`--${boundaryMatch[1] || boundaryMatch[2]}`);
+  const headerSeparator = Buffer.from("\r\n\r\n");
+  const fields = [];
+  const files = [];
+  let position = 0;
+
+  while (position < body.length) {
+    const boundaryIndex = body.indexOf(boundary, position);
+    if (boundaryIndex === -1) break;
+    position = boundaryIndex + boundary.length;
+    if (body[position] === 45 && body[position + 1] === 45) break;
+    if (body[position] === 13 && body[position + 1] === 10) position += 2;
+
+    const headerEnd = body.indexOf(headerSeparator, position);
+    if (headerEnd === -1) break;
+    const headers = body.slice(position, headerEnd).toString("utf8");
+    const contentStart = headerEnd + headerSeparator.length;
+    const nextBoundary = body.indexOf(boundary, contentStart);
+    if (nextBoundary === -1) break;
+
+    let contentEnd = nextBoundary;
+    if (body[contentEnd - 2] === 13 && body[contentEnd - 1] === 10) {
+      contentEnd -= 2;
+    }
+    const data = body.slice(contentStart, contentEnd);
+    const disposition = headers.match(/content-disposition:\s*form-data;([^\r\n]+)/i)?.[1] || "";
+    const name = disposition.match(/name="([^"]+)"/i)?.[1] || "";
+    const filename = disposition.match(/filename="([^"]*)"/i)?.[1] || "";
+
+    if (filename) {
+      files.push({ data, filename, name });
+    } else if (name) {
+      fields.push({ name, value: data.toString("utf8") });
+    }
+    position = nextBoundary;
+  }
+
+  return { fields, files };
+}
+
+function parseWorklogEntries(text) {
+  const normalizedText = String(text || "")
+    .replace(/\r/g, "\n")
+    .replace(/(\d{2}\.\d{2}\.\d{2}\.?)/g, "\n$1\n")
+    .replace(/(\d{1,2}:\d{2}\s*[~\-–]\s*\d{1,2}:\d{2})/g, "\n$1\n");
+  const tokens = normalizedText
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const entries = [];
+  let index = 0;
+
+  while (index < tokens.length) {
+    const date = parseWorklogDate(tokens[index]);
+    if (!date) {
+      index += 1;
+      continue;
+    }
+
+    index += 1;
+    const ranges = [];
+    while (index < tokens.length && parseTimeRange(tokens[index])) {
+      ranges.push(parseTimeRange(tokens[index]));
+      index += 1;
+    }
+
+    const titleLines = [];
+    while (index < tokens.length && !parseWorklogDate(tokens[index])) {
+      if (isWorklogFooter(tokens[index])) break;
+      if (!/^\d+(\.\d+)?$/.test(tokens[index])) {
+        titleLines.push(tokens[index]);
+      }
+      index += 1;
+    }
+
+    const title = titleLines.join(" ").replace(/\s+/g, " ").trim() || "근무";
+    ranges.forEach((range) => {
+      entries.push({
+        date,
+        end: range.end,
+        start: range.start,
+        title
+      });
+    });
+  }
+
+  return entries;
+}
+
+function parseWorklogDate(value) {
+  const match = String(value || "").match(/^(\d{2})\.(\d{2})\.(\d{2})\.?$/);
+  if (!match) return "";
+  const year = 2000 + Number(match[1]);
+  return `${year}-${match[2]}-${match[3]}`;
+}
+
+function parseTimeRange(value) {
+  const match = String(value || "").match(/^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/);
+  if (!match) return null;
+  return {
+    end: normalizeWorklogTime(match[2]),
+    start: normalizeWorklogTime(match[1])
+  };
+}
+
+function normalizeWorklogTime(value) {
+  const [hours, minutes] = String(value).split(":");
+  return `${hours.padStart(2, "0")}:${minutes}`;
+}
+
+function isWorklogFooter(value) {
+  return String(value || "").includes("점심식사") || String(value || "").includes("저녁식사");
 }
 
 function hashPassword(password) {
