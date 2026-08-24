@@ -351,6 +351,14 @@ copyForm.addEventListener("submit", (event) => {
 });
 
 closeCopyModal.addEventListener("click", closeCopyModalDialog);
+copyDate.addEventListener("click", () => {
+  if (typeof copyDate.showPicker !== "function") return;
+  try {
+    copyDate.showPicker();
+  } catch {
+    // Keep the browser's native date-input behavior as a fallback.
+  }
+});
 copyModal.addEventListener("click", (event) => {
   if (event.target === copyModal || event.target.closest("[data-copy-cancel]")) {
     closeCopyModalDialog();
