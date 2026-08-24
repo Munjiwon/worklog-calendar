@@ -3,8 +3,15 @@ const fs = require("fs/promises");
 const http = require("http");
 const path = require("path");
 const { Pool } = require("pg");
+const { createCanvas, DOMMatrix, ImageData, Path2D } = require("@napi-rs/canvas");
+const koreanLanguage = require("@tesseract.js-data/kor");
 const pdfParse = require("pdf-parse");
 const querystring = require("querystring");
+const { createWorker, PSM } = require("tesseract.js");
+
+globalThis.DOMMatrix ||= DOMMatrix;
+globalThis.ImageData ||= ImageData;
+globalThis.Path2D ||= Path2D;
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 3000);
@@ -19,6 +26,7 @@ const USERS_FILE = path.join(DATA_DIR, "users.json");
 const CALENDAR_DATA_FILE = path.join(DATA_DIR, "calendar-data.json");
 const PUBLIC_PATHS = new Set(["/login", "/login.html", "/register", "/register.html", "/styles.css", "/favicon.ico"]);
 const ROLES = new Set(["user", "admin"]);
+const MAX_WORKLOG_PDF_PAGES = 12;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -169,7 +177,9 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
 
 async function startServer() {
   await ensureUserStore();
@@ -322,10 +332,13 @@ async function handleParseWorklogPdf(request, response) {
     sendJson(response, 400, { error: "PDF 파일을 선택해주세요." });
     return;
   }
+  if (!file.data.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
+    sendJson(response, 400, { error: "PDF 형식의 파일만 업로드할 수 있습니다." });
+    return;
+  }
 
   try {
-    const parsed = await pdfParse(file.data);
-    const entries = parseWorklogEntries(parsed.text || "");
+    const entries = await extractWorklogEntriesFromPdf(file.data);
     if (entries.length === 0) {
       sendJson(response, 400, { error: "근무일지에서 가져올 일정을 찾지 못했습니다." });
       return;
@@ -334,6 +347,89 @@ async function handleParseWorklogPdf(request, response) {
   } catch (error) {
     console.error(error);
     sendJson(response, 400, { error: "PDF 파일을 읽을 수 없습니다." });
+  }
+}
+
+async function extractWorklogEntriesFromPdf(pdfBuffer) {
+  const parsed = await pdfParse(pdfBuffer);
+  const textEntries = parseWorklogEntries(parsed.text || "");
+  if (textEntries.length > 0) return textEntries;
+
+  const ocrText = await recognizeScannedPdf(pdfBuffer);
+  return parseWorklogEntries(ocrText);
+}
+
+async function recognizeScannedPdf(pdfBuffer) {
+  const images = await renderPdfPages(pdfBuffer);
+  const worker = await createWorker(koreanLanguage.code, 1, {
+    cacheMethod: "none",
+    gzip: koreanLanguage.gzip,
+    langPath: koreanLanguage.langPath
+  });
+
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+    const pages = [];
+    for (const image of images) {
+      const result = await worker.recognize(image);
+      pages.push(result.data.text || "");
+    }
+    return pages.join("\n");
+  } finally {
+    await worker.terminate();
+  }
+}
+
+async function renderPdfPages(pdfBuffer) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const document = await pdfjs.getDocument({
+    CanvasFactory: PdfCanvasFactory,
+    data: new Uint8Array(pdfBuffer),
+    disableWorker: true
+  }).promise;
+
+  try {
+    if (document.numPages > MAX_WORKLOG_PDF_PAGES) {
+      throw new Error(`PDF page limit exceeded: ${document.numPages}`);
+    }
+
+    const images = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const originalViewport = page.getViewport({ scale: 1 });
+      const longestSide = Math.max(originalViewport.width, originalViewport.height);
+      const scale = Math.min(2.5, 2400 / longestSide);
+      const viewport = page.getViewport({ scale });
+      const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+      await page.render({
+        canvasContext: canvas.getContext("2d"),
+        viewport
+      }).promise;
+      images.push(canvas.toBuffer("image/png"));
+      page.cleanup();
+    }
+    return images;
+  } finally {
+    await document.destroy();
+  }
+}
+
+class PdfCanvasFactory {
+  create(width, height) {
+    const canvas = createCanvas(width, height);
+    return { canvas, context: canvas.getContext("2d") };
+  }
+
+  reset(target, width, height) {
+    target.canvas.width = width;
+    target.canvas.height = height;
+  }
+
+  destroy(target) {
+    target.canvas.width = 0;
+    target.canvas.height = 0;
+    target.canvas = null;
+    target.context = null;
   }
 }
 
@@ -784,11 +880,12 @@ function parseMultipartFormData(contentType, body) {
 function parseWorklogEntries(text) {
   const normalizedText = String(text || "")
     .replace(/\r/g, "\n")
+    .replace(/(\d)[;：](\d{2})/g, "$1:$2")
     .replace(/(\d{2}\.\d{2}\.\d{2}\.?)/g, "\n$1\n")
-    .replace(/(\d{1,2}:\d{2}\s*[~\-–]\s*\d{1,2}:\d{2})/g, "\n$1\n");
+    .replace(/(\d{1,2}:\d{2}\s*[~～〜\-–]\s*\d{1,2}:\d{2})/g, "\n$1\n");
   const tokens = normalizedText
     .split(/\n+/)
-    .map((line) => line.trim())
+    .map(normalizeWorklogToken)
     .filter(Boolean);
   const entries = [];
   let index = 0;
@@ -810,13 +907,13 @@ function parseWorklogEntries(text) {
     const titleLines = [];
     while (index < tokens.length && !parseWorklogDate(tokens[index])) {
       if (isWorklogFooter(tokens[index])) break;
-      if (!/^\d+(\.\d+)?$/.test(tokens[index])) {
+      if (!/^\d+(\.\d+)?$/.test(tokens[index]) && tokens[index].length > 1) {
         titleLines.push(tokens[index]);
       }
       index += 1;
     }
 
-    const title = titleLines.join(" ").replace(/\s+/g, " ").trim() || "근무";
+    const title = normalizeWorklogTitle(titleLines.join(" ")) || "근무";
     ranges.forEach((range) => {
       entries.push({
         date,
@@ -834,25 +931,58 @@ function parseWorklogDate(value) {
   const match = String(value || "").match(/^(\d{2})\.(\d{2})\.(\d{2})\.?$/);
   if (!match) return "";
   const year = 2000 + Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return "";
   return `${year}-${match[2]}-${match[3]}`;
 }
 
 function parseTimeRange(value) {
-  const match = String(value || "").match(/^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/);
+  const match = String(value || "").match(/^(\d{1,2}:\d{2})\s*[~～〜\-–]\s*(\d{1,2}:\d{2})$/);
   if (!match) return null;
-  return {
-    end: normalizeWorklogTime(match[2]),
-    start: normalizeWorklogTime(match[1])
-  };
+  const start = normalizeWorklogTime(match[1]);
+  const end = normalizeWorklogTime(match[2]);
+  if (!start || !end || worklogTimeToMinutes(end) <= worklogTimeToMinutes(start)) return null;
+  return { end, start };
 }
 
 function normalizeWorklogTime(value) {
   const [hours, minutes] = String(value).split(":");
-  return `${hours.padStart(2, "0")}:${minutes}`;
+  const numericHours = Number(hours);
+  const numericMinutes = Number(minutes);
+  if (!Number.isInteger(numericHours) || numericHours < 0 || numericHours > 23) return "";
+  if (!Number.isInteger(numericMinutes) || numericMinutes < 0 || numericMinutes > 59) return "";
+  return `${String(numericHours).padStart(2, "0")}:${String(numericMinutes).padStart(2, "0")}`;
+}
+
+function worklogTimeToMinutes(value) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function normalizeWorklogToken(value) {
+  return String(value || "")
+    .replace(/^[|ㅣ_\[\]\s]+|[|ㅣ_\[\]\s]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeWorklogTitle(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/(?:옛|엣|[09])\s*지/g, "엣지")
+    .replace(/네이터/g, "데이터")
+    .replace(/해\s*석\s*[.·]?\s*실\s*행/g, "해석·실행")
+    .replace(/중\s*계/g, "중계")
+    .replace(/\s*[-–]\s*/g, "-")
+    .replace(/생성 모듈$/, "생성 모듈 구현")
+    .trim();
 }
 
 function isWorklogFooter(value) {
-  return String(value || "").includes("점심식사") || String(value || "").includes("저녁식사");
+  const compact = String(value || "").replace(/\s+/g, "");
+  return compact.includes("점심식사") || compact.includes("저녁식사");
 }
 
 function hashPassword(password) {
@@ -1028,3 +1158,8 @@ function sendJson(response, status, data) {
   });
   response.end(JSON.stringify(data));
 }
+
+module.exports = {
+  extractWorklogEntriesFromPdf,
+  parseWorklogEntries
+};

@@ -1,2 +1,4 @@
 data/
+tmp/
+*.traineddata
 node_modules/

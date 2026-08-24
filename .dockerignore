@@ -2,6 +2,8 @@
 .gitignore
 node_modules
 data
+tmp
+*.traineddata
 npm-debug.log
 Dockerfile
 docker-compose.yml

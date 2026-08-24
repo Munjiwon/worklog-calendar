@@ -82,7 +82,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 - 로그인 세션 보호 및 로그아웃
 - 회원가입에서 일반 계정 생성
 - 관리자 페이지에서 일반/관리자 계정 생성 및 수정
-- PDF 근무일지 업로드 후 선택한 태그로 일정 가져오기
+- 텍스트/스캔 PDF 근무일지 업로드 후 선택한 태그로 일정 가져오기
 - 주간 캘린더에서 근무 일정 확인
 - 월간 캘린더에서 한 달 전체 근무 일정 확인
 - 월간 캘린더에서 근무를 드래그해 날짜 이동

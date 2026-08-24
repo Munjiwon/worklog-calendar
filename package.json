@@ -4,13 +4,18 @@
   "private": true,
   "description": "Work log calendar with a simple login session",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.8",
+    "@tesseract.js-data/kor": "^1.0.0",
     "pdf-parse": "^1.1.1",
-    "pg": "^8.22.0"
+    "pdfjs-dist": "^4.10.38",
+    "pg": "^8.22.0",
+    "tesseract.js": "^7.0.0"
   }
 }
