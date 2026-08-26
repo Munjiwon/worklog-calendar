@@ -54,6 +54,7 @@ const copyTagsNextWeek = document.querySelector("#copyTagsNextWeek");
 const prevMonth = document.querySelector("#prevMonth");
 const nextMonth = document.querySelector("#nextMonth");
 const thisMonth = document.querySelector("#thisMonth");
+const copyTagsNextMonth = document.querySelector("#copyTagsNextMonth");
 const monthCalendar = document.querySelector("#monthCalendar");
 const monthCalendarLabel = document.querySelector("#monthCalendarLabel");
 const editModal = document.querySelector("#editModal");
@@ -75,6 +76,7 @@ const pdfImportSubmit = document.querySelector("#pdfImportSubmit");
 const tagCopyModal = document.querySelector("#tagCopyModal");
 const tagCopyForm = document.querySelector("#tagCopyForm");
 const closeTagCopyModal = document.querySelector("#closeTagCopyModal");
+const tagCopyModalTitle = document.querySelector("#tagCopyModalTitle");
 const copyTagChoices = document.querySelector("#copyTagChoices");
 const selectAllCopyTags = document.querySelector("#selectAllCopyTags");
 const editId = document.querySelector("#editId");
@@ -105,6 +107,7 @@ let monthDraggingShift = null;
 let suppressMonthShiftClick = false;
 let selectedShiftId = null;
 let pdfImportEntries = [];
+let tagCopyPeriod = "week";
 let calendarDataSaveTimer = null;
 const collapsedTags = new Set();
 
@@ -205,7 +208,8 @@ pasteWeek.addEventListener("click", () => {
   render();
 });
 
-copyTagsNextWeek.addEventListener("click", openTagCopyModal);
+copyTagsNextWeek.addEventListener("click", () => openTagCopyModal("week"));
+copyTagsNextMonth.addEventListener("click", () => openTagCopyModal("month"));
 
 calendar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-holiday-toggle]");
@@ -399,28 +403,30 @@ selectAllCopyTags.addEventListener("click", () => {
 
 tagCopyForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  const isMonthCopy = tagCopyPeriod === "month";
+  const periodLabel = isMonthCopy ? "다음 달" : "다음 주";
   const selectedTags = new Set(
     [...copyTagChoices.querySelectorAll("input:checked")].map((input) => normalizeTag(input.value))
   );
 
   if (selectedTags.size === 0) {
-    alert("다음 주로 복사할 태그를 하나 이상 선택해주세요.");
+    alert(`${periodLabel}로 복사할 태그를 하나 이상 선택해주세요.`);
     return;
   }
 
-  const weekShifts = getWeekShifts(currentWeekStart);
-  const copied = weekShifts
+  const sourceShifts = getTagCopySourceShifts(tagCopyPeriod);
+  const copied = sourceShifts
     .filter((shift) => selectedTags.has(getShiftTag(shift)))
     .map((shift) => makeShift(
       shift.title,
       getShiftTag(shift),
-      toISODate(addDays(parseISODate(shift.date), 7)),
+      isMonthCopy ? moveDateToNextMonth(shift.date) : toISODate(addDays(parseISODate(shift.date), 7)),
       shift.start,
       shift.end
     ));
 
   if (copied.length === 0) {
-    alert("선택한 태그에 해당하는 이번 주 일정이 없습니다.");
+    alert(`선택한 태그에 해당하는 이번 ${isMonthCopy ? "달" : "주"} 일정이 없습니다.`);
     return;
   }
 
@@ -428,10 +434,15 @@ tagCopyForm.addEventListener("submit", (event) => {
   selectedShiftId = null;
   saveShifts();
   closeTagCopyModalDialog();
-  currentWeekStart = addDays(currentWeekStart, 7);
-  currentMonthStart = startOfMonth(currentWeekStart);
+  if (isMonthCopy) {
+    currentMonthStart = addMonths(currentMonthStart, 1);
+    currentWeekStart = startOfWeek(currentMonthStart);
+  } else {
+    currentWeekStart = addDays(currentWeekStart, 7);
+    currentMonthStart = startOfMonth(currentWeekStart);
+  }
   render();
-  alert(`${copied.length}건의 일정을 다음 주로 복사했습니다.`);
+  alert(`${copied.length}건의 일정을 ${periodLabel}로 복사했습니다.`);
 });
 
 editTag.addEventListener("input", () => renderTagControls());
@@ -895,6 +906,13 @@ function getWeekShifts(weekStart) {
   const weekEnd = addDays(weekStart, 6);
   return shifts
     .filter((shift) => shift.date >= toISODate(weekStart) && shift.date <= toISODate(weekEnd))
+    .sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`));
+}
+
+function getMonthShifts(monthStart) {
+  const monthKey = toISODate(startOfMonth(monthStart)).slice(0, 7);
+  return shifts
+    .filter((shift) => shift.date.startsWith(monthKey))
     .sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`));
 }
 
@@ -1631,19 +1649,23 @@ function setPdfImportMessage(message) {
   pdfImportMessage.classList.toggle("hidden", !message);
 }
 
-function openTagCopyModal() {
-  const weekShifts = getWeekShifts(currentWeekStart);
-  if (weekShifts.length === 0) {
-    alert("다음 주로 복사할 이번 주 일정이 없습니다.");
+function openTagCopyModal(period = "week") {
+  tagCopyPeriod = period === "month" ? "month" : "week";
+  const isMonthCopy = tagCopyPeriod === "month";
+  const sourceShifts = getTagCopySourceShifts(tagCopyPeriod);
+  if (sourceShifts.length === 0) {
+    alert(`다음 ${isMonthCopy ? "달" : "주"}로 복사할 이번 ${isMonthCopy ? "달" : "주"} 일정이 없습니다.`);
     return;
   }
 
   const tagCounts = new Map();
-  weekShifts.forEach((shift) => {
+  sourceShifts.forEach((shift) => {
     const tag = getShiftTag(shift);
     tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
   });
 
+  tagCopyModalTitle.textContent = `태그 다음${isMonthCopy ? "달" : "주"} 복사`;
+  copyTagChoices.setAttribute("aria-label", `다음 ${isMonthCopy ? "달" : "주"}로 복사할 태그`);
   copyTagChoices.innerHTML = "";
   [...tagCounts.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], "ko-KR"))
@@ -1669,6 +1691,10 @@ function openTagCopyModal() {
 
   tagCopyModal.classList.remove("hidden");
   copyTagChoices.querySelector("input")?.focus();
+}
+
+function getTagCopySourceShifts(period) {
+  return period === "month" ? getMonthShifts(currentMonthStart) : getWeekShifts(currentWeekStart);
 }
 
 function closeTagCopyModalDialog() {
@@ -1987,6 +2013,17 @@ function addDays(date, amount) {
 
 function addMonths(date, amount) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function moveDateToNextMonth(value) {
+  const source = parseISODate(value);
+  const targetMonth = new Date(source.getFullYear(), source.getMonth() + 1, 1);
+  const targetLastDay = new Date(source.getFullYear(), source.getMonth() + 2, 0).getDate();
+  return toISODate(new Date(
+    targetMonth.getFullYear(),
+    targetMonth.getMonth(),
+    Math.min(source.getDate(), targetLastDay)
+  ));
 }
 
 function getDayDiff(date, baseDate) {
