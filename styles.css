@@ -416,6 +416,10 @@ select {
   align-items: start;
 }
 
+.workspace > * {
+  min-width: 0;
+}
+
 .panel,
 .calendar-panel,
 .month-calendar-panel {
@@ -440,10 +444,38 @@ select {
 }
 
 .panel-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.workspace > .panel .panel-header {
+  display: grid;
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 12px;
+}
+
+.workspace > .panel .panel-header h2 {
+  white-space: nowrap;
+}
+
+.panel-actions .secondary {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#createShift {
+  color: #fff;
+  background: var(--primary);
+}
+
+#clearAll {
+  color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .calendar-actions {
