@@ -96,7 +96,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 - 태그별 색상 지정 및 캘린더 근무 박스 색상 적용
 - 월별 근무 시간, 월별 태그별 근무 시간, 태그별 충족 시간 표시
 - 주간 일정 복사/붙여넣기
-- 선택한 태그의 이번 주/이번 달 일정을 다음 주/다음 달로 복사
+- 선택한 태그의 이번 주/이번 달 일정을 다음 주/다음 달/선택한 달로 복사
 - 현재 주차 일정만 삭제
 
 ## 기본 조작

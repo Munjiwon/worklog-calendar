@@ -55,6 +55,7 @@ const prevMonth = document.querySelector("#prevMonth");
 const nextMonth = document.querySelector("#nextMonth");
 const thisMonth = document.querySelector("#thisMonth");
 const copyTagsNextMonth = document.querySelector("#copyTagsNextMonth");
+const copyTagsToMonth = document.querySelector("#copyTagsToMonth");
 const monthCalendar = document.querySelector("#monthCalendar");
 const monthCalendarLabel = document.querySelector("#monthCalendarLabel");
 const editModal = document.querySelector("#editModal");
@@ -77,6 +78,8 @@ const tagCopyModal = document.querySelector("#tagCopyModal");
 const tagCopyForm = document.querySelector("#tagCopyForm");
 const closeTagCopyModal = document.querySelector("#closeTagCopyModal");
 const tagCopyModalTitle = document.querySelector("#tagCopyModalTitle");
+const tagCopyTargetMonthField = document.querySelector("#tagCopyTargetMonthField");
+const tagCopyTargetMonth = document.querySelector("#tagCopyTargetMonth");
 const copyTagChoices = document.querySelector("#copyTagChoices");
 const selectAllCopyTags = document.querySelector("#selectAllCopyTags");
 const editId = document.querySelector("#editId");
@@ -210,6 +213,8 @@ pasteWeek.addEventListener("click", () => {
 
 copyTagsNextWeek.addEventListener("click", () => openTagCopyModal("week"));
 copyTagsNextMonth.addEventListener("click", () => openTagCopyModal("month"));
+copyTagsToMonth.addEventListener("click", () => openTagCopyModal("custom-month"));
+tagCopyTargetMonth.addEventListener("click", () => openNativePicker(tagCopyTargetMonth));
 
 calendar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-holiday-toggle]");
@@ -356,13 +361,17 @@ copyForm.addEventListener("submit", (event) => {
 
 closeCopyModal.addEventListener("click", closeCopyModalDialog);
 copyDate.addEventListener("click", () => {
-  if (typeof copyDate.showPicker !== "function") return;
-  try {
-    copyDate.showPicker();
-  } catch {
-    // Keep the browser's native date-input behavior as a fallback.
-  }
+  openNativePicker(copyDate);
 });
+
+function openNativePicker(input) {
+  if (typeof input.showPicker !== "function") return;
+  try {
+    input.showPicker();
+  } catch {
+    // Keep the browser's native date/month-input behavior as a fallback.
+  }
+}
 copyModal.addEventListener("click", (event) => {
   if (event.target === copyModal || event.target.closest("[data-copy-cancel]")) {
     closeCopyModalDialog();
@@ -403,8 +412,27 @@ selectAllCopyTags.addEventListener("click", () => {
 
 tagCopyForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const isMonthCopy = tagCopyPeriod === "month";
-  const periodLabel = isMonthCopy ? "다음 달" : "다음 주";
+  const isWeekCopy = tagCopyPeriod === "week";
+  const isCustomMonthCopy = tagCopyPeriod === "custom-month";
+  let targetMonthStart = null;
+  let periodLabel = "다음 주";
+
+  if (!isWeekCopy) {
+    const targetMonthValue = isCustomMonthCopy
+      ? tagCopyTargetMonth.value
+      : toISODate(addMonths(currentMonthStart, 1)).slice(0, 7);
+    if (!targetMonthValue) {
+      alert("복사할 달을 선택해주세요.");
+      return;
+    }
+    if (targetMonthValue === toISODate(currentMonthStart).slice(0, 7)) {
+      alert("현재 달과 다른 달을 선택해주세요.");
+      return;
+    }
+    targetMonthStart = parseISODate(`${targetMonthValue}-01`);
+    periodLabel = isCustomMonthCopy ? formatMonthKey(targetMonthValue) : "다음 달";
+  }
+
   const selectedTags = new Set(
     [...copyTagChoices.querySelectorAll("input:checked")].map((input) => normalizeTag(input.value))
   );
@@ -420,13 +448,15 @@ tagCopyForm.addEventListener("submit", (event) => {
     .map((shift) => makeShift(
       shift.title,
       getShiftTag(shift),
-      isMonthCopy ? moveDateToNextMonth(shift.date) : toISODate(addDays(parseISODate(shift.date), 7)),
+      isWeekCopy
+        ? toISODate(addDays(parseISODate(shift.date), 7))
+        : moveDateToMonth(shift.date, targetMonthStart),
       shift.start,
       shift.end
     ));
 
   if (copied.length === 0) {
-    alert(`선택한 태그에 해당하는 이번 ${isMonthCopy ? "달" : "주"} 일정이 없습니다.`);
+    alert(`선택한 태그에 해당하는 이번 ${isWeekCopy ? "주" : "달"} 일정이 없습니다.`);
     return;
   }
 
@@ -434,12 +464,12 @@ tagCopyForm.addEventListener("submit", (event) => {
   selectedShiftId = null;
   saveShifts();
   closeTagCopyModalDialog();
-  if (isMonthCopy) {
-    currentMonthStart = addMonths(currentMonthStart, 1);
-    currentWeekStart = startOfWeek(currentMonthStart);
-  } else {
+  if (isWeekCopy) {
     currentWeekStart = addDays(currentWeekStart, 7);
     currentMonthStart = startOfMonth(currentWeekStart);
+  } else {
+    currentMonthStart = targetMonthStart;
+    currentWeekStart = startOfWeek(currentMonthStart);
   }
   render();
   alert(`${copied.length}건의 일정을 ${periodLabel}로 복사했습니다.`);
@@ -1650,11 +1680,14 @@ function setPdfImportMessage(message) {
 }
 
 function openTagCopyModal(period = "week") {
-  tagCopyPeriod = period === "month" ? "month" : "week";
-  const isMonthCopy = tagCopyPeriod === "month";
+  tagCopyPeriod = ["month", "custom-month"].includes(period) ? period : "week";
+  const isWeekCopy = tagCopyPeriod === "week";
+  const isCustomMonthCopy = tagCopyPeriod === "custom-month";
+  const sourcePeriodLabel = isWeekCopy ? "이번 주" : "이번 달";
+  const destinationLabel = isCustomMonthCopy ? "특정 달" : `다음 ${isWeekCopy ? "주" : "달"}`;
   const sourceShifts = getTagCopySourceShifts(tagCopyPeriod);
   if (sourceShifts.length === 0) {
-    alert(`다음 ${isMonthCopy ? "달" : "주"}로 복사할 이번 ${isMonthCopy ? "달" : "주"} 일정이 없습니다.`);
+    alert(`${destinationLabel}로 복사할 ${sourcePeriodLabel} 일정이 없습니다.`);
     return;
   }
 
@@ -1664,8 +1697,13 @@ function openTagCopyModal(period = "week") {
     tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
   });
 
-  tagCopyModalTitle.textContent = `태그 다음${isMonthCopy ? "달" : "주"} 복사`;
-  copyTagChoices.setAttribute("aria-label", `다음 ${isMonthCopy ? "달" : "주"}로 복사할 태그`);
+  tagCopyModalTitle.textContent = `태그 ${destinationLabel.replace(" ", "")} 복사`;
+  copyTagChoices.setAttribute("aria-label", `${destinationLabel}로 복사할 태그`);
+  tagCopyTargetMonthField.classList.toggle("hidden", !isCustomMonthCopy);
+  tagCopyTargetMonth.required = isCustomMonthCopy;
+  tagCopyTargetMonth.value = isCustomMonthCopy
+    ? toISODate(addMonths(currentMonthStart, 1)).slice(0, 7)
+    : "";
   copyTagChoices.innerHTML = "";
   [...tagCounts.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], "ko-KR"))
@@ -1690,16 +1728,22 @@ function openTagCopyModal(period = "week") {
     });
 
   tagCopyModal.classList.remove("hidden");
-  copyTagChoices.querySelector("input")?.focus();
+  if (isCustomMonthCopy) {
+    tagCopyTargetMonth.focus();
+  } else {
+    copyTagChoices.querySelector("input")?.focus();
+  }
 }
 
 function getTagCopySourceShifts(period) {
-  return period === "month" ? getMonthShifts(currentMonthStart) : getWeekShifts(currentWeekStart);
+  return period === "week" ? getWeekShifts(currentWeekStart) : getMonthShifts(currentMonthStart);
 }
 
 function closeTagCopyModalDialog() {
   tagCopyModal.classList.add("hidden");
   tagCopyForm.reset();
+  tagCopyTargetMonthField.classList.add("hidden");
+  tagCopyTargetMonth.required = false;
   copyTagChoices.innerHTML = "";
 }
 
@@ -2015,13 +2059,17 @@ function addMonths(date, amount) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }
 
-function moveDateToNextMonth(value) {
+function moveDateToMonth(value, targetMonth) {
   const source = parseISODate(value);
-  const targetMonth = new Date(source.getFullYear(), source.getMonth() + 1, 1);
-  const targetLastDay = new Date(source.getFullYear(), source.getMonth() + 2, 0).getDate();
+  const normalizedTargetMonth = startOfMonth(targetMonth);
+  const targetLastDay = new Date(
+    normalizedTargetMonth.getFullYear(),
+    normalizedTargetMonth.getMonth() + 1,
+    0
+  ).getDate();
   return toISODate(new Date(
-    targetMonth.getFullYear(),
-    targetMonth.getMonth(),
+    normalizedTargetMonth.getFullYear(),
+    normalizedTargetMonth.getMonth(),
     Math.min(source.getDate(), targetLastDay)
   ));
 }

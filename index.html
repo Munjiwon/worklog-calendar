@@ -99,6 +99,7 @@
         <div class="calendar-actions">
           <button id="thisMonth" type="button" class="secondary">이번 달</button>
           <button id="copyTagsNextMonth" type="button" class="secondary">태그 다음달 복사</button>
+          <button id="copyTagsToMonth" type="button" class="secondary">태그 특정달 복사</button>
           <button id="nextMonth" type="button" class="icon-button" aria-label="다음 달">›</button>
         </div>
       </div>
@@ -212,6 +213,10 @@
         <h2 id="tagCopyModalTitle">태그 다음주 복사</h2>
         <button id="closeTagCopyModal" type="button" class="icon-button" aria-label="태그 복사 닫기">×</button>
       </div>
+      <label id="tagCopyTargetMonthField" class="hidden">
+        복사할 달
+        <input id="tagCopyTargetMonth" type="month">
+      </label>
       <div class="tag-copy-tools">
         <button id="selectAllCopyTags" type="button" class="secondary">전체 선택</button>
       </div>
