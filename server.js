@@ -100,7 +100,12 @@ const server = http.createServer(async (request, response) => {
         sendJson(response, 401, { error: "unauthorized" });
         return;
       }
-      sendJson(response, 200, { role: session.role, username: session.sub });
+      const user = await findUser(session.sub);
+      sendJson(response, 200, {
+        name: user?.name || session.sub,
+        role: session.role,
+        username: session.sub
+      });
       return;
     }
 
@@ -195,7 +200,12 @@ async function handleLogin(request, response) {
   const user = await findUser(username);
 
   if (user && verifyPassword(password, user.passwordHash)) {
-    setSessionCookie(response, user);
+    const loggedInUser = {
+      ...user,
+      lastLoginAt: new Date().toISOString()
+    };
+    await updateUser(loggedInUser);
+    setSessionCookie(response, loggedInUser);
     redirect(response, "/");
     return;
   }
@@ -227,6 +237,7 @@ async function handleRegister(request, response) {
   const user = {
     createdAt: new Date().toISOString(),
     email: userData.user.email,
+    lastLoginAt: new Date().toISOString(),
     name: userData.user.name,
     passwordHash: hashPassword(userData.user.password),
     role: "user",
@@ -255,6 +266,7 @@ async function handleCreateUser(request, response) {
   const user = {
     createdAt: new Date().toISOString(),
     email: userData.user.email,
+    lastLoginAt: null,
     name: userData.user.name,
     passwordHash: hashPassword(userData.user.password),
     role: userData.user.role,
@@ -263,13 +275,7 @@ async function handleCreateUser(request, response) {
   await createUser(user);
 
   sendJson(response, 201, {
-    user: {
-      createdAt: user.createdAt,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      username: user.username
-    }
+    user: publicUser(user)
   });
 }
 
@@ -555,11 +561,13 @@ async function ensureDatabaseUserStore() {
         name TEXT NOT NULL DEFAULT '',
         email TEXT NOT NULL DEFAULT '',
         role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_login_at TIMESTAMPTZ
       )
     `);
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''");
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
+    await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ");
     await dbPool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email)) WHERE email <> ''");
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS calendar_data (
@@ -602,6 +610,7 @@ async function ensureFileUserStore() {
     const initialAdmin = {
       createdAt: new Date().toISOString(),
       email: "",
+      lastLoginAt: null,
       name: "관리자",
       passwordHash: hashPassword(PASSWORD),
       role: "admin",
@@ -616,6 +625,7 @@ async function ensureFileUserStore() {
     users.push({
       createdAt: new Date().toISOString(),
       email: "",
+      lastLoginAt: null,
       name: "관리자",
       passwordHash: hashPassword(PASSWORD),
       role: "admin",
@@ -628,11 +638,12 @@ async function ensureFileUserStore() {
 async function loadUsers() {
   if (dbPool) {
     const result = await dbPool.query(
-      "SELECT username, password_hash, name, email, role, created_at FROM users ORDER BY created_at ASC, username ASC"
+      "SELECT username, password_hash, name, email, role, created_at, last_login_at FROM users ORDER BY created_at ASC, username ASC"
     );
     return result.rows.map((row) => ({
       createdAt: row.created_at.toISOString(),
       email: row.email || "",
+      lastLoginAt: row.last_login_at?.toISOString() || null,
       name: row.name || "",
       passwordHash: row.password_hash,
       role: row.role,
@@ -663,7 +674,7 @@ async function findUser(username) {
   const normalized = normalizeUsername(username);
   if (dbPool) {
     const result = await dbPool.query(
-      "SELECT username, password_hash, name, email, role, created_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
+      "SELECT username, password_hash, name, email, role, created_at, last_login_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
       [normalized]
     );
     const row = result.rows[0];
@@ -671,6 +682,7 @@ async function findUser(username) {
     return {
       createdAt: row.created_at.toISOString(),
       email: row.email || "",
+      lastLoginAt: row.last_login_at?.toISOString() || null,
       name: row.name || "",
       passwordHash: row.password_hash,
       role: row.role,
@@ -685,8 +697,8 @@ async function findUser(username) {
 async function createUser(user) {
   if (dbPool) {
     await dbPool.query(
-      "INSERT INTO users (username, password_hash, name, email, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-      [user.username, user.passwordHash, user.name, user.email, user.role, user.createdAt]
+      "INSERT INTO users (username, password_hash, name, email, role, created_at, last_login_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [user.username, user.passwordHash, user.name, user.email, user.role, user.createdAt, user.lastLoginAt || null]
     );
     return;
   }
@@ -699,8 +711,8 @@ async function createUser(user) {
 async function updateUser(user) {
   if (dbPool) {
     await dbPool.query(
-      "UPDATE users SET password_hash = $1, name = $2, email = $3, role = $4 WHERE lower(username) = lower($5)",
-      [user.passwordHash, user.name, user.email, user.role, user.username]
+      "UPDATE users SET password_hash = $1, name = $2, email = $3, role = $4, last_login_at = $5 WHERE lower(username) = lower($6)",
+      [user.passwordHash, user.name, user.email, user.role, user.lastLoginAt || null, user.username]
     );
     return;
   }
@@ -721,6 +733,7 @@ function publicUser(user) {
   return {
     createdAt: user.createdAt,
     email: user.email || "",
+    lastLoginAt: user.lastLoginAt || null,
     name: user.name || "",
     role: user.role,
     username: user.username

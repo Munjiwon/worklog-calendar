@@ -69,6 +69,24 @@ button {
   gap: 8px;
 }
 
+.toolbar-account {
+  display: grid;
+  justify-items: end;
+  gap: 9px;
+}
+
+.account-greeting {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.account-greeting strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
 .link-button {
   display: inline-flex;
   align-items: center;
@@ -623,10 +641,16 @@ button:disabled {
 }
 
 .user-item-actions {
-  display: flex;
+  display: grid;
   flex: 0 0 auto;
-  align-items: center;
+  justify-items: end;
   gap: 8px;
+}
+
+.user-item-times {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
 }
 
 .shift-list {
@@ -1296,10 +1320,18 @@ button:disabled {
     text-align: left;
   }
 
-  .user-item,
-  .user-item-actions {
+  .user-item {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .user-item-actions {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .user-item-times {
+    justify-items: start;
   }
 
   .calendar {

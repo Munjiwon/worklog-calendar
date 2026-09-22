@@ -13,11 +13,14 @@
         <p class="eyebrow">Work Log Calendar</p>
         <h1>관리자</h1>
       </div>
-      <div class="toolbar-actions">
-        <a class="secondary link-button" href="/">캘린더</a>
-        <form method="post" action="/logout" class="logout-form">
-          <button type="submit" class="secondary">로그아웃</button>
-        </form>
+      <div class="toolbar-account">
+        <p id="accountGreeting" class="account-greeting" aria-live="polite" hidden>안녕하세요, <strong id="accountName"></strong>님</p>
+        <div class="toolbar-actions">
+          <a class="secondary link-button" href="/">캘린더</a>
+          <form method="post" action="/logout" class="logout-form">
+            <button type="submit" class="secondary">로그아웃</button>
+          </form>
+        </div>
       </div>
     </section>
 

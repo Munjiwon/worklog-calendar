@@ -45,6 +45,8 @@ const createShift = document.querySelector("#createShift");
 const importWorklogPdf = document.querySelector("#importWorklogPdf");
 const clearAll = document.querySelector("#clearAll");
 const adminLink = document.querySelector("#adminLink");
+const accountGreeting = document.querySelector("#accountGreeting");
+const accountName = document.querySelector("#accountName");
 const prevWeek = document.querySelector("#prevWeek");
 const nextWeek = document.querySelector("#nextWeek");
 const todayWeek = document.querySelector("#todayWeek");
@@ -751,7 +753,8 @@ async function loadCurrentSession() {
 }
 
 function updateToolbarForSession(session) {
-  if (!adminLink) return;
+  accountName.textContent = session.name || session.username;
+  accountGreeting.hidden = false;
   adminLink.hidden = session.role !== "admin";
 }
 

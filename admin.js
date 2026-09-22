@@ -16,10 +16,29 @@ const editPassword = document.querySelector("#editPassword");
 const editName = document.querySelector("#editName");
 const editEmail = document.querySelector("#editEmail");
 const editRole = document.querySelector("#editRole");
+const accountGreeting = document.querySelector("#accountGreeting");
+const accountName = document.querySelector("#accountName");
 
 let users = [];
 
-loadUsers();
+initializeAdmin();
+
+async function initializeAdmin() {
+  const response = await fetch("/api/session", {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+  if (!response.ok) {
+    window.location.href = "/login";
+    return;
+  }
+
+  const session = await response.json();
+  accountName.textContent = session.name || session.username;
+  accountGreeting.hidden = false;
+  await loadUsers();
+}
 
 userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -120,7 +139,10 @@ function renderUsers(users) {
         <span>${escapeHtml(user.name || "-")} · ${escapeHtml(user.email || "-")} · ${formatRole(user.role)}</span>
       </div>
       <div class="user-item-actions">
-        <time>${formatDateTime(user.createdAt)}</time>
+        <div class="user-item-times">
+          <span>가입 ${formatDateTime(user.createdAt)}</span>
+          <span>마지막 로그인 ${formatDateTime(user.lastLoginAt, "기록 없음")}</span>
+        </div>
         <button type="button" class="action-button edit-button" data-edit-user="${escapeHtml(user.username)}">수정</button>
       </div>
     </article>
@@ -160,8 +182,8 @@ function formatRole(role) {
   return role === "admin" ? "관리자" : "일반";
 }
 
-function formatDateTime(value) {
-  if (!value) return "";
+function formatDateTime(value, fallback = "-") {
+  if (!value) return fallback;
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
     timeStyle: "short"

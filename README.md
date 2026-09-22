@@ -80,6 +80,7 @@ WORKLOG_USERNAME=admin WORKLOG_PASSWORD=your-password SESSION_SECRET=your-secret
 ## 주요 기능
 
 - 로그인 세션 보호 및 로그아웃
+- 로그인 사용자 인사말과 관리자용 마지막 로그인 시각 확인
 - 회원가입에서 일반 계정 생성
 - 관리자 페이지에서 일반/관리자 계정 생성 및 수정
 - 텍스트/스캔 PDF 근무일지 업로드 후 선택한 태그로 일정 가져오기
