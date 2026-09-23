@@ -452,6 +452,70 @@ select {
   box-shadow: var(--shadow);
 }
 
+.calendar-filter-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.calendar-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.calendar-filter-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.calendar-filter-header .secondary {
+  flex: 0 0 auto;
+  height: 36px;
+}
+
+.calendar-tag-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.calendar-tag-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--tag-border, var(--line));
+  border-radius: 999px;
+  color: var(--tag-text, var(--text));
+  background: var(--tag-bg, #fbfcff);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calendar-tag-filter:has(input:not(:checked)) {
+  border-color: var(--line);
+  color: var(--muted);
+  background: #f3f5f9;
+  opacity: 0.72;
+}
+
+.calendar-tag-filter input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--tag-border, var(--primary));
+}
+
 .panel-header,
 .calendar-header {
   display: flex;
@@ -1283,6 +1347,11 @@ button:disabled {
 @media (max-width: 720px) {
   .app-shell {
     padding: 14px;
+  }
+
+  .calendar-filter-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .calendar-header {

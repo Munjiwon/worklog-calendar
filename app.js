@@ -41,6 +41,8 @@ const shiftCount = document.querySelector("#shiftCount");
 const monthSummary = document.querySelector("#monthSummary");
 const mealSettings = document.querySelector("#mealSettings");
 const tagSummary = document.querySelector("#tagSummary");
+const calendarTagFilters = document.querySelector("#calendarTagFilters");
+const showAllCalendarTags = document.querySelector("#showAllCalendarTags");
 const createShift = document.querySelector("#createShift");
 const importWorklogPdf = document.querySelector("#importWorklogPdf");
 const clearAll = document.querySelector("#clearAll");
@@ -115,6 +117,7 @@ let pdfImportEntries = [];
 let tagCopyPeriod = "week";
 let calendarDataSaveTimer = null;
 const collapsedTags = new Set();
+let hiddenCalendarTags = new Set();
 
 initializeApp();
 
@@ -123,6 +126,25 @@ createShift.addEventListener("click", () => {
 });
 
 importWorklogPdf.addEventListener("click", openPdfImportModal);
+
+calendarTagFilters.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-calendar-tag-filter]");
+  if (!input) return;
+  const tag = normalizeTag(input.dataset.calendarTagFilter);
+  if (input.checked) {
+    hiddenCalendarTags.delete(tag);
+  } else {
+    hiddenCalendarTags.add(tag);
+  }
+  saveHiddenCalendarTags();
+  render();
+});
+
+showAllCalendarTags.addEventListener("click", () => {
+  hiddenCalendarTags.clear();
+  saveHiddenCalendarTags();
+  render();
+});
 
 clearAll.addEventListener("click", () => {
   const weekShifts = getWeekShifts(currentWeekStart);
@@ -722,6 +744,7 @@ async function initializeApp() {
   }
 
   storageKeys = makeStorageKeys(currentSession.username);
+  hiddenCalendarTags = loadHiddenCalendarTags();
   updateToolbarForSession(currentSession);
   migrateLegacyStorage(currentSession);
   const serverRecord = await loadServerCalendarData();
@@ -785,6 +808,7 @@ function makeStorageKeys(username) {
     tagColors: `${prefix}:tag-colors`,
     tagMeals: `${prefix}:tag-meals`,
     tagTargets: `${prefix}:tag-targets`,
+    hiddenCalendarTags: `${prefix}:hidden-calendar-tags`,
     weekClipboard: `${prefix}:week-clipboard`
   };
 }
@@ -922,6 +946,8 @@ function render() {
   const weekShifts = getWeekShifts(currentWeekStart);
   const countedShifts = getCountedShifts(weekShifts);
   const overlapIds = getOverlapIds(countedShifts);
+  const visibleWeekShifts = weekShifts.filter(isCalendarTagVisible);
+  const visibleOverlapIds = getOverlapIds(getCountedShifts(visibleWeekShifts));
 
   weekLabel.textContent = `${formatDate(currentWeekStart)} - ${formatDate(weekEnd)}`;
   pasteWeek.disabled = loadWeekClipboard().length === 0;
@@ -930,8 +956,9 @@ function render() {
   renderMonthSummary(currentWeekStart);
   renderTagSummary(countedShifts);
   renderShiftList(weekShifts, overlapIds);
-  renderCalendar(weekShifts, overlapIds);
+  renderCalendar(visibleWeekShifts, visibleOverlapIds);
   renderMonthCalendar();
+  renderCalendarTagFilters();
   renderTagControls();
 }
 
@@ -1212,7 +1239,7 @@ function renderMonthCalendar() {
 
   getMonthGridDays(currentMonthStart).forEach((date) => {
     const iso = toISODate(date);
-    const dayShifts = getDayShifts(iso);
+    const dayShifts = getDayShifts(iso).filter(isCalendarTagVisible);
     const holiday = isHoliday(iso);
     const countedDayShifts = holiday ? [] : dayShifts;
     const total = countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0);
@@ -1805,6 +1832,30 @@ function getKnownTags() {
   return [...tags].sort((a, b) => a.localeCompare(b, "ko-KR"));
 }
 
+function renderCalendarTagFilters() {
+  const tags = getKnownTags();
+  calendarTagFilters.innerHTML = "";
+  showAllCalendarTags.disabled = hiddenCalendarTags.size === 0;
+
+  tags.forEach((tag) => {
+    const color = getTagColor(tag);
+    const label = document.createElement("label");
+    label.className = "calendar-tag-filter";
+    label.style.setProperty("--tag-bg", color.bg);
+    label.style.setProperty("--tag-border", color.border);
+    label.style.setProperty("--tag-text", color.text);
+    label.innerHTML = `
+      <input type="checkbox" data-calendar-tag-filter="${escapeHtml(tag)}"${hiddenCalendarTags.has(tag) ? "" : " checked"}>
+      <span>${escapeHtml(tag)}</span>
+    `;
+    calendarTagFilters.append(label);
+  });
+}
+
+function isCalendarTagVisible(shift) {
+  return !hiddenCalendarTags.has(getShiftTag(shift));
+}
+
 function deleteTag(tag) {
   const normalized = normalizeTag(tag);
   if (normalized === DEFAULT_TAG) return;
@@ -1816,11 +1867,13 @@ function deleteTag(tag) {
   delete tagColors[normalized];
   delete tagTargetMinutes[normalized];
   delete tagMealSettings[normalized];
+  hiddenCalendarTags.delete(normalized);
   ensureTagColor(DEFAULT_TAG);
   editTag.value = DEFAULT_TAG;
   saveTagColors();
   saveTagTargetMinutes();
   saveTagMealSettings();
+  saveHiddenCalendarTags();
   saveShifts();
   render();
 }
@@ -2178,6 +2231,19 @@ function loadTagMealSettings() {
 function saveTagMealSettings() {
   localStorage.setItem(storageKeys.tagMeals, JSON.stringify(tagMealSettings));
   queueCalendarDataSave();
+}
+
+function loadHiddenCalendarTags() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKeys.hiddenCalendarTags)) || [];
+    return new Set(Array.isArray(saved) ? saved.map(normalizeTag) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHiddenCalendarTags() {
+  localStorage.setItem(storageKeys.hiddenCalendarTags, JSON.stringify([...hiddenCalendarTags]));
 }
 
 function loadWeekClipboard() {
