@@ -106,6 +106,7 @@ let currentSession = null;
 let shifts = [];
 let tagColors = {};
 let holidays = new Set();
+let weekendWorkdays = new Set();
 const publicHolidays = new Map();
 const loadedPublicHolidayYears = new Set();
 const failedPublicHolidayYears = new Set();
@@ -249,7 +250,20 @@ calendar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-holiday-toggle]");
   if (!button) return;
   const date = button.dataset.holidayToggle;
-  if (getHolidayInfo(date)?.automatic) return;
+  const holidayInfo = getHolidayInfo(date);
+  if (holidayInfo?.type === "public") return;
+  if (holidayInfo?.type === "weekend") {
+    weekendWorkdays.add(date);
+    saveWeekendWorkdays();
+    render();
+    return;
+  }
+  if (!holidayInfo && isWeekendDate(date) && weekendWorkdays.has(date)) {
+    weekendWorkdays.delete(date);
+    saveWeekendWorkdays();
+    render();
+    return;
+  }
   if (holidays.has(date)) {
     holidays.delete(date);
   } else {
@@ -887,6 +901,7 @@ function makeStorageKeys(username) {
   const prefix = `worklog-calendar-prototype:${userKey}`;
   return {
     holidays: `${prefix}:holidays`,
+    weekendWorkdays: `${prefix}:weekend-workdays`,
     shifts: `${prefix}:shifts`,
     tagColors: `${prefix}:tag-colors`,
     tagMeals: `${prefix}:tag-meals`,
@@ -899,6 +914,7 @@ function makeStorageKeys(username) {
 function readLocalCalendarData() {
   return {
     holidays: loadJsonFromStorage(storageKeys.holidays, []),
+    weekendWorkdays: loadJsonFromStorage(storageKeys.weekendWorkdays, []),
     shifts: loadJsonFromStorage(storageKeys.shifts, []),
     tagColors: loadJsonFromStorage(storageKeys.tagColors, {}),
     tagMealSettings: loadJsonFromStorage(storageKeys.tagMeals, {}),
@@ -912,6 +928,7 @@ function applyCalendarData(data) {
   shifts = normalized.shifts;
   tagColors = normalized.tagColors;
   holidays = new Set(normalized.holidays);
+  weekendWorkdays = new Set(normalized.weekendWorkdays);
   tagTargetMinutes = normalized.tagTargetMinutes;
   tagMealSettings = normalized.tagMealSettings;
   writeLocalCalendarData(normalized);
@@ -919,6 +936,7 @@ function applyCalendarData(data) {
 
 function writeLocalCalendarData(data) {
   localStorage.setItem(storageKeys.holidays, JSON.stringify(data.holidays || []));
+  localStorage.setItem(storageKeys.weekendWorkdays, JSON.stringify(data.weekendWorkdays || []));
   localStorage.setItem(storageKeys.shifts, JSON.stringify(data.shifts || []));
   localStorage.setItem(storageKeys.tagColors, JSON.stringify(data.tagColors || {}));
   localStorage.setItem(storageKeys.tagMeals, JSON.stringify(data.tagMealSettings || {}));
@@ -929,6 +947,7 @@ function writeLocalCalendarData(data) {
 function getCurrentCalendarData() {
   return {
     holidays: [...holidays],
+    weekendWorkdays: [...weekendWorkdays],
     shifts,
     tagColors,
     tagMealSettings,
@@ -940,6 +959,7 @@ function getCurrentCalendarData() {
 function getEmptyCalendarData() {
   return {
     holidays: [],
+    weekendWorkdays: [],
     shifts: [],
     tagColors: {},
     tagMealSettings: {},
@@ -952,6 +972,7 @@ function normalizeCalendarData(data) {
   const source = data && typeof data === "object" && !Array.isArray(data) ? data : {};
   return {
     holidays: Array.isArray(source.holidays) ? source.holidays : [],
+    weekendWorkdays: Array.isArray(source.weekendWorkdays) ? source.weekendWorkdays : [],
     shifts: Array.isArray(source.shifts) ? source.shifts : [],
     tagColors: isPlainObject(source.tagColors) ? source.tagColors : {},
     tagMealSettings: isPlainObject(source.tagMealSettings) ? source.tagMealSettings : {},
@@ -964,6 +985,7 @@ function hasCalendarData(data) {
   const normalized = normalizeCalendarData(data);
   return normalized.shifts.length > 0
     || normalized.holidays.length > 0
+    || normalized.weekendWorkdays.length > 0
     || normalized.weekClipboard.length > 0
     || Object.keys(normalized.tagColors).length > 0
     || Object.keys(normalized.tagMealSettings).length > 0
@@ -1290,20 +1312,25 @@ function renderCalendar(weekShifts, overlapIds) {
     const iso = toISODate(date);
     const holidayInfo = getHolidayInfo(iso);
     const holiday = Boolean(holidayInfo);
-    const automaticHoliday = Boolean(holidayInfo?.automatic);
+    const lockedHoliday = holidayInfo?.type === "public";
+    const weekendOverride = !holiday && isWeekendDate(iso) && weekendWorkdays.has(iso);
     const holidayName = holidayInfo?.type === "public" ? holidayInfo.name : "";
     const holidayLabel = holidayInfo?.type === "public"
       ? "국가공휴일"
       : holidayInfo?.type === "weekend"
         ? "주말"
-        : holidayInfo?.type === "manual"
-          ? "휴일 해제"
-          : "휴일 지정";
+        : weekendOverride
+          ? "주말 복원"
+          : holidayInfo?.type === "manual"
+            ? "휴일 해제"
+            : "휴일 지정";
     const holidayTitle = holidayInfo?.type === "public"
       ? "국가공휴일은 자동으로 적용됩니다."
       : holidayInfo?.type === "weekend"
-        ? "주말은 자동으로 휴일 처리됩니다."
-        : "";
+        ? "클릭하면 주말 휴일 처리를 해제합니다."
+        : weekendOverride
+          ? "클릭하면 주말 휴일 처리를 다시 적용합니다."
+          : "";
     const dayShifts = weekShifts.filter((shift) => shift.date === iso);
     const countedDayShifts = holiday ? [] : dayShifts;
     const column = document.createElement("article");
@@ -1314,7 +1341,7 @@ function renderCalendar(weekShifts, overlapIds) {
         <span>${formatDate(date)}</span>
         <div class="holiday-row">
           ${holidayName ? `<span class="holiday-name" title="${escapeHtml(holidayName)}">${escapeHtml(holidayName)}</span>` : ""}
-          <button type="button" class="holiday-toggle${holiday ? " active" : ""}${automaticHoliday ? " automatic" : ""}" data-holiday-toggle="${iso}"${automaticHoliday ? ` disabled title="${holidayTitle}"` : ""}>${holidayLabel}</button>
+          <button type="button" class="holiday-toggle${holiday ? " active" : ""}${lockedHoliday ? " automatic" : ""}" data-holiday-toggle="${iso}"${lockedHoliday ? " disabled" : ""}${holidayTitle ? ` title="${holidayTitle}"` : ""}>${holidayLabel}</button>
         </div>
         <div class="day-total">실근무 ${formatDuration(countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0))}</div>
       </header>
@@ -1612,7 +1639,7 @@ function getHolidayInfo(date) {
   if (holidays.has(date)) {
     return { automatic: false, name: "", type: "manual" };
   }
-  if (isWeekendDate(date)) {
+  if (isWeekendDate(date) && !weekendWorkdays.has(date)) {
     return { automatic: true, name: "주말", type: "weekend" };
   }
   return null;
@@ -2330,6 +2357,11 @@ function loadHolidays() {
 
 function saveHolidays() {
   localStorage.setItem(storageKeys.holidays, JSON.stringify([...holidays]));
+  queueCalendarDataSave();
+}
+
+function saveWeekendWorkdays() {
+  localStorage.setItem(storageKeys.weekendWorkdays, JSON.stringify([...weekendWorkdays]));
   queueCalendarDataSave();
 }
 

@@ -859,6 +859,7 @@ function normalizeCalendarData(data) {
   const source = data && typeof data === "object" && !Array.isArray(data) ? data : {};
   return {
     holidays: Array.isArray(source.holidays) ? source.holidays.map(String) : [],
+    weekendWorkdays: Array.isArray(source.weekendWorkdays) ? source.weekendWorkdays.map(String) : [],
     shifts: Array.isArray(source.shifts) ? source.shifts.map(normalizeShiftData).filter(Boolean) : [],
     tagColors: normalizePlainObject(source.tagColors),
     tagMealSettings: normalizePlainObject(source.tagMealSettings),
