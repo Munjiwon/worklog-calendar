@@ -76,6 +76,7 @@
     </section>
 
     <p id="publicHolidayStatus" class="public-holiday-status" aria-live="polite">대한민국 국가공휴일을 불러오는 중입니다.</p>
+    <p id="semesterStatus" class="semester-status" aria-live="polite">학기 설정을 불러오는 중입니다.</p>
 
     <section class="workspace">
       <aside class="panel">
@@ -83,6 +84,7 @@
           <h2>일정 목록</h2>
           <div class="panel-actions">
             <button id="createShift" type="button" class="secondary">일정 등록</button>
+            <button id="manageTimetable" type="button" class="secondary">시간표 관리</button>
             <button id="importWorklogPdf" type="button" class="secondary">PDF 업로드</button>
             <button id="clearAll" type="button" class="secondary">이번 주 삭제</button>
           </div>
@@ -242,6 +244,52 @@
         <button type="submit">복사</button>
       </div>
     </form>
+  </div>
+
+  <div id="timetableModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="timetableModalTitle">
+    <section class="modal-card timetable-modal-card">
+      <div class="modal-header">
+        <h2 id="timetableModalTitle">내 시간표 관리</h2>
+        <button id="closeTimetableModal" type="button" class="icon-button" aria-label="시간표 관리 닫기">×</button>
+      </div>
+      <p id="timetableSemesterSummary" class="timetable-semester-summary"></p>
+      <p class="timetable-help">등록한 수업은 관리자가 지정한 학기 동안 매주 반복되며, 근무 일정과 겹치면 저장 전에 알려드립니다.</p>
+      <form id="timetableEntryForm" class="timetable-entry-form">
+        <input id="timetableEntryId" type="hidden">
+        <label>
+          요일
+          <select id="timetableDayOfWeek" required>
+            <option value="1">월요일</option>
+            <option value="2">화요일</option>
+            <option value="3">수요일</option>
+            <option value="4">목요일</option>
+            <option value="5">금요일</option>
+            <option value="6">토요일</option>
+            <option value="7">일요일</option>
+          </select>
+        </label>
+        <label class="timetable-title-field">
+          수업명
+          <input id="timetableTitle" type="text" maxlength="80" placeholder="예: 인공지능개론" required>
+        </label>
+        <label>
+          시작
+          <input id="timetableStart" type="time" required>
+        </label>
+        <label>
+          종료
+          <input id="timetableEnd" type="time" required>
+        </label>
+        <div class="timetable-form-actions">
+          <button id="cancelTimetableEdit" type="button" class="secondary hidden">취소</button>
+          <button id="timetableSubmit" type="submit">수업 추가</button>
+        </div>
+      </form>
+      <div id="timetableList" class="timetable-list"></div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" data-timetable-close>닫기</button>
+      </div>
+    </section>
   </div>
 
   <script src="./app.js"></script>

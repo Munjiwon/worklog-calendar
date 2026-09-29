@@ -25,6 +25,7 @@ const DATABASE_URL = process.env.DATABASE_URL || "";
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const CALENDAR_DATA_FILE = path.join(DATA_DIR, "calendar-data.json");
+const APP_SETTINGS_FILE = path.join(DATA_DIR, "app-settings.json");
 const PUBLIC_PATHS = new Set(["/login", "/login.html", "/register", "/register.html", "/styles.css", "/favicon.ico"]);
 const ROLES = new Set(["user", "admin"]);
 const MAX_WORKLOG_PDF_PAGES = 12;
@@ -116,6 +117,21 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       await handleGetPublicHolidays(response, url.searchParams.get("year"));
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/semester") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      sendJson(response, 200, { semester: await loadSemesterSetting() });
+      return;
+    }
+
+    if (request.method === "PUT" && pathname === "/api/semester") {
+      if (!requireAdmin(response, session)) return;
+      await handleSaveSemester(request, response);
       return;
     }
 
@@ -382,6 +398,17 @@ async function handleSaveCalendarData(request, response, session) {
   sendJson(response, 200, { ok: true });
 }
 
+async function handleSaveSemester(request, response) {
+  const body = await readJsonBody(request);
+  const result = validateSemesterSetting(body);
+  if (result.error) {
+    sendJson(response, 400, { error: result.error });
+    return;
+  }
+  await saveSemesterSetting(result.semester);
+  sendJson(response, 200, { semester: result.semester });
+}
+
 async function handleParseWorklogPdf(request, response) {
   const body = await readRequestBuffer(request, 8_000_000);
   const form = parseMultipartFormData(request.headers["content-type"] || "", body);
@@ -628,6 +655,13 @@ async function ensureDatabaseUserStore() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
 
     const adminResult = await dbPool.query("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1");
     if (adminResult.rowCount === 0) {
@@ -864,7 +898,25 @@ function normalizeCalendarData(data) {
     tagColors: normalizePlainObject(source.tagColors),
     tagMealSettings: normalizePlainObject(source.tagMealSettings),
     tagTargetMinutes: normalizePlainObject(source.tagTargetMinutes),
+    timetable: Array.isArray(source.timetable) ? source.timetable.map(normalizeTimetableEntry).filter(Boolean) : [],
     weekClipboard: Array.isArray(source.weekClipboard) ? source.weekClipboard.map(normalizeWeekClipboardItem).filter(Boolean) : []
+  };
+}
+
+function normalizeTimetableEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const dayOfWeek = Number(entry.dayOfWeek);
+  const start = normalizeWorklogTime(entry.start);
+  const end = normalizeWorklogTime(entry.end);
+  const title = String(entry.title || "").trim().slice(0, 80);
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !title || !start || !end) return null;
+  if (worklogTimeToMinutes(end) <= worklogTimeToMinutes(start)) return null;
+  return {
+    dayOfWeek,
+    end,
+    id: String(entry.id || crypto.randomUUID()),
+    start,
+    title
   };
 }
 
@@ -895,6 +947,76 @@ function normalizeWeekClipboardItem(item) {
 
 function normalizePlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+async function loadSemesterSetting() {
+  if (dbPool) {
+    const result = await dbPool.query("SELECT value FROM app_settings WHERE key = 'semester' LIMIT 1");
+    return normalizeSemesterSetting(result.rows[0]?.value || {});
+  }
+
+  try {
+    const data = JSON.parse(await fs.readFile(APP_SETTINGS_FILE, "utf8"));
+    return normalizeSemesterSetting(data.semester || {});
+  } catch (error) {
+    if (error.code === "ENOENT") return normalizeSemesterSetting({});
+    throw error;
+  }
+}
+
+async function saveSemesterSetting(semester) {
+  const normalized = normalizeSemesterSetting(semester);
+  if (dbPool) {
+    await dbPool.query(
+      `INSERT INTO app_settings (key, value, updated_at)
+       VALUES ('semester', $1, NOW())
+       ON CONFLICT (key)
+       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [normalized]
+    );
+    return;
+  }
+
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  let settings = {};
+  try {
+    settings = JSON.parse(await fs.readFile(APP_SETTINGS_FILE, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  settings.semester = normalized;
+  await fs.writeFile(APP_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+function normalizeSemesterSetting(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    endDate: isISODate(source.endDate) ? String(source.endDate) : "",
+    name: String(source.name || "").trim().slice(0, 80),
+    startDate: isISODate(source.startDate) ? String(source.startDate) : ""
+  };
+}
+
+function validateSemesterSetting(value) {
+  const semester = normalizeSemesterSetting(value);
+  const provided = Boolean(semester.name || semester.startDate || semester.endDate);
+  if (!provided) return { semester };
+  if (!semester.name || !semester.startDate || !semester.endDate) {
+    return { error: "학기명과 적용 시작일, 종료일을 모두 입력해주세요." };
+  }
+  if (semester.startDate > semester.endDate) {
+    return { error: "학기 종료일은 시작일보다 빠를 수 없습니다." };
+  }
+  return { semester };
+}
+
+function isISODate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.getFullYear() === Number(match[1])
+    && date.getMonth() === Number(match[2]) - 1
+    && date.getDate() === Number(match[3]);
 }
 
 function parseMultipartFormData(contentType, body) {
@@ -1227,6 +1349,9 @@ function sendJson(response, status, data) {
 
 module.exports = {
   extractWorklogEntriesFromPdf,
+  normalizeCalendarData,
   normalizePublicHolidays,
+  normalizeSemesterSetting,
+  normalizeTimetableEntry,
   parseWorklogEntries
 };

@@ -18,6 +18,11 @@ const editEmail = document.querySelector("#editEmail");
 const editRole = document.querySelector("#editRole");
 const accountGreeting = document.querySelector("#accountGreeting");
 const accountName = document.querySelector("#accountName");
+const semesterForm = document.querySelector("#semesterForm");
+const semesterFormMessage = document.querySelector("#semesterFormMessage");
+const semesterName = document.querySelector("#semesterName");
+const semesterStartDate = document.querySelector("#semesterStartDate");
+const semesterEndDate = document.querySelector("#semesterEndDate");
 
 let users = [];
 
@@ -37,8 +42,33 @@ async function initializeAdmin() {
   const session = await response.json();
   accountName.textContent = session.name || session.username;
   accountGreeting.hidden = false;
-  await loadUsers();
+  await Promise.all([loadUsers(), loadSemester()]);
 }
+
+semesterForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setSemesterMessage("");
+
+  const response = await fetch("/api/semester", {
+    body: JSON.stringify({
+      endDate: semesterEndDate.value,
+      name: semesterName.value.trim(),
+      startDate: semesterStartDate.value
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "PUT"
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    setSemesterMessage(result.error || "학기 설정을 저장할 수 없습니다.", true);
+    return;
+  }
+
+  fillSemesterForm(result.semester);
+  setSemesterMessage("학기 적용 기간을 저장했습니다.");
+});
 
 userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -124,6 +154,28 @@ async function loadUsers() {
   const result = await response.json();
   users = result.users || [];
   renderUsers(users);
+}
+
+async function loadSemester() {
+  const response = await fetch("/api/semester");
+  if (!response.ok) {
+    setSemesterMessage("학기 설정을 불러올 수 없습니다.", true);
+    return;
+  }
+  const result = await response.json();
+  fillSemesterForm(result.semester || {});
+}
+
+function fillSemesterForm(semester) {
+  semesterName.value = semester.name || "";
+  semesterStartDate.value = semester.startDate || "";
+  semesterEndDate.value = semester.endDate || "";
+}
+
+function setSemesterMessage(message, isError = false) {
+  semesterFormMessage.textContent = message;
+  semesterFormMessage.classList.toggle("hidden", !message);
+  semesterFormMessage.classList.toggle("error", isError);
 }
 
 function renderUsers(users) {

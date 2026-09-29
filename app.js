@@ -44,7 +44,9 @@ const tagSummary = document.querySelector("#tagSummary");
 const calendarTagFilters = document.querySelector("#calendarTagFilters");
 const showAllCalendarTags = document.querySelector("#showAllCalendarTags");
 const publicHolidayStatus = document.querySelector("#publicHolidayStatus");
+const semesterStatus = document.querySelector("#semesterStatus");
 const createShift = document.querySelector("#createShift");
+const manageTimetable = document.querySelector("#manageTimetable");
 const importWorklogPdf = document.querySelector("#importWorklogPdf");
 const clearAll = document.querySelector("#clearAll");
 const adminLink = document.querySelector("#adminLink");
@@ -98,6 +100,18 @@ const editEnd = document.querySelector("#editEnd");
 const copyId = document.querySelector("#copyId");
 const copyDate = document.querySelector("#copyDate");
 const copySummary = document.querySelector("#copySummary");
+const timetableModal = document.querySelector("#timetableModal");
+const closeTimetableModal = document.querySelector("#closeTimetableModal");
+const timetableSemesterSummary = document.querySelector("#timetableSemesterSummary");
+const timetableEntryForm = document.querySelector("#timetableEntryForm");
+const timetableEntryId = document.querySelector("#timetableEntryId");
+const timetableDayOfWeek = document.querySelector("#timetableDayOfWeek");
+const timetableTitle = document.querySelector("#timetableTitle");
+const timetableStart = document.querySelector("#timetableStart");
+const timetableEnd = document.querySelector("#timetableEnd");
+const timetableList = document.querySelector("#timetableList");
+const timetableSubmit = document.querySelector("#timetableSubmit");
+const cancelTimetableEdit = document.querySelector("#cancelTimetableEdit");
 
 let currentWeekStart = startOfWeek(new Date());
 let currentMonthStart = startOfMonth(currentWeekStart);
@@ -113,6 +127,8 @@ const failedPublicHolidayYears = new Set();
 const pendingPublicHolidayYears = new Set();
 let tagTargetMinutes = {};
 let tagMealSettings = {};
+let timetable = [];
+let semester = { endDate: "", name: "", startDate: "" };
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
@@ -132,6 +148,70 @@ createShift.addEventListener("click", () => {
 });
 
 importWorklogPdf.addEventListener("click", openPdfImportModal);
+manageTimetable.addEventListener("click", openTimetableModalDialog);
+
+timetableEntryForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const start = timetableStart.value;
+  const end = timetableEnd.value;
+  if (timeToMinutes(end) <= timeToMinutes(start)) {
+    alert("수업 종료 시간은 시작 시간보다 늦어야 합니다.");
+    return;
+  }
+  const entry = {
+    dayOfWeek: Number(timetableDayOfWeek.value),
+    end,
+    id: timetableEntryId.value || makeId(),
+    start,
+    title: timetableTitle.value.trim()
+  };
+  if (timetableEntryId.value) {
+    timetable = timetable.map((item) => item.id === timetableEntryId.value ? entry : item);
+  } else {
+    timetable.push(entry);
+  }
+  timetable.sort(compareTimetableEntries);
+  saveTimetable();
+  resetTimetableEntryForm();
+  timetableTitle.focus();
+  renderTimetableList();
+  render();
+});
+
+timetableList.addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-class]");
+  if (editButton) {
+    const entry = timetable.find((item) => item.id === editButton.dataset.editClass);
+    if (!entry) return;
+    timetableEntryId.value = entry.id;
+    timetableDayOfWeek.value = String(entry.dayOfWeek);
+    timetableTitle.value = entry.title;
+    timetableStart.value = entry.start;
+    timetableEnd.value = entry.end;
+    timetableSubmit.textContent = "수업 수정";
+    cancelTimetableEdit.classList.remove("hidden");
+    timetableTitle.focus();
+    return;
+  }
+  const button = event.target.closest("[data-delete-class]");
+  if (!button) return;
+  timetable = timetable.filter((entry) => entry.id !== button.dataset.deleteClass);
+  saveTimetable();
+  renderTimetableList();
+  render();
+});
+
+cancelTimetableEdit.addEventListener("click", () => {
+  resetTimetableEntryForm();
+  timetableTitle.focus();
+});
+
+closeTimetableModal.addEventListener("click", closeTimetableModalDialog);
+timetableModal.addEventListener("click", (event) => {
+  if (event.target === timetableModal || event.target.closest("[data-timetable-close]")) {
+    closeTimetableModalDialog();
+  }
+});
 
 calendarTagFilters.addEventListener("change", (event) => {
   const input = event.target.closest("[data-calendar-tag-filter]");
@@ -235,6 +315,7 @@ pasteWeek.addEventListener("click", () => {
     item.start,
     item.end
   ));
+  if (!confirmTimetableConflicts(pasted, "붙여넣기")) return;
   shifts = [...shifts, ...pasted];
   selectedShiftId = null;
   saveShifts();
@@ -363,6 +444,9 @@ editForm.addEventListener("submit", (event) => {
     return;
   }
 
+  const candidate = { date, end, id: id || "new", start, tag, title };
+  if (!confirmTimetableConflicts([candidate], id ? "수정" : "등록")) return;
+
   ensureTagColor(tag);
   if (id) {
     shifts = shifts.map((shift) => (
@@ -394,6 +478,7 @@ copyForm.addEventListener("submit", (event) => {
   const shift = shifts.find((item) => item.id === copyId.value);
   if (!shift || !copyDate.value) return;
   const copied = makeShift(`${shift.title} 복사`, getShiftTag(shift), copyDate.value, shift.start, shift.end);
+  if (!confirmTimetableConflicts([copied], "복사")) return;
   shifts.push(copied);
   selectedShiftId = copied.id;
   currentWeekStart = startOfWeek(parseISODate(copied.date));
@@ -504,6 +589,8 @@ tagCopyForm.addEventListener("submit", (event) => {
     return;
   }
 
+  if (!confirmTimetableConflicts(copied, "복사")) return;
+
   shifts = [...shifts, ...copied];
   selectedShiftId = null;
   saveShifts();
@@ -584,7 +671,11 @@ document.addEventListener("keydown", (event) => {
     closeTagCopyModalDialog();
     return;
   }
-  if (!editModal.classList.contains("hidden") || !copyModal.classList.contains("hidden") || !pdfImportModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden")) return;
+  if (event.key === "Escape" && !timetableModal.classList.contains("hidden")) {
+    closeTimetableModalDialog();
+    return;
+  }
+  if (!editModal.classList.contains("hidden") || !copyModal.classList.contains("hidden") || !pdfImportModal.classList.contains("hidden") || !tagCopyModal.classList.contains("hidden") || !timetableModal.classList.contains("hidden")) return;
   if (event.key !== "Delete" || !selectedShiftId) return;
   if (isEditableElement(event.target)) return;
 
@@ -657,9 +748,12 @@ calendar.addEventListener("drop", (event) => {
   const target = getDropTarget(body, event.clientY, shift);
   clearDropPreview();
 
+  const moved = { ...shift, date: body.dataset.date, start: minutesToTime(target.start), end: minutesToTime(target.end) };
+  if (!confirmTimetableConflicts([moved], "이동")) return;
+
   shifts = shifts.map((item) => (
     item.id === id
-      ? { ...item, date: body.dataset.date, start: minutesToTime(target.start), end: minutesToTime(target.end) }
+      ? moved
       : item
   ));
   saveShifts();
@@ -730,6 +824,16 @@ window.addEventListener("mouseup", () => {
     return;
   }
   if (resizingShift) {
+    const resized = shifts.find((item) => item.id === resizingShift.id);
+    const wasChanged = resized && (
+      timeToMinutes(resized.start) !== resizingShift.originalStart
+      || timeToMinutes(resized.end) !== resizingShift.originalEnd
+    );
+    if (wasChanged && !confirmTimetableConflicts([resized], "시간 변경")) {
+      shifts = shifts.map((item) => item.id === resizingShift.id
+        ? { ...item, start: minutesToTime(resizingShift.originalStart), end: minutesToTime(resizingShift.originalEnd) }
+        : item);
+    }
     resizingShift = null;
     saveShifts();
     render();
@@ -747,7 +851,14 @@ window.addEventListener("mouseup", () => {
   const tag = DEFAULT_TAG;
 
   ensureTagColor(tag);
-  shifts.push(makeShift(title, tag, creatingShift.date, minutesToTime(start), minutesToTime(end)));
+  const created = makeShift(title, tag, creatingShift.date, minutesToTime(start), minutesToTime(end));
+  if (!confirmTimetableConflicts([created], "등록")) {
+    creatingShift = null;
+    clearCreatePreview();
+    render();
+    return;
+  }
+  shifts.push(created);
   selectedShiftId = shifts.at(-1).id;
   saveTagColors();
   saveShifts();
@@ -767,7 +878,11 @@ async function initializeApp() {
   hiddenCalendarTags = loadHiddenCalendarTags();
   updateToolbarForSession(currentSession);
   migrateLegacyStorage(currentSession);
-  const serverRecord = await loadServerCalendarData();
+  const [serverRecord, loadedSemester] = await Promise.all([
+    loadServerCalendarData(),
+    loadSemesterSetting()
+  ]);
+  semester = loadedSemester;
   const localData = readLocalCalendarData();
   const initialData = serverRecord.exists ? serverRecord.data : localData;
   applyCalendarData(initialData);
@@ -817,6 +932,21 @@ async function loadServerCalendarData() {
     };
   } catch {
     return { data: getEmptyCalendarData(), exists: false };
+  }
+}
+
+async function loadSemesterSetting() {
+  try {
+    const response = await fetch("/api/semester", {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) throw new Error("semester request failed");
+    const result = await response.json();
+    return normalizeSemester(result.semester);
+  } catch {
+    return { endDate: "", name: "", startDate: "" };
   }
 }
 
@@ -896,6 +1026,15 @@ function updatePublicHolidayStatus() {
   publicHolidayStatus.classList.remove("error");
 }
 
+function updateSemesterStatus() {
+  const isConfigured = Boolean(semester.name && semester.startDate && semester.endDate);
+  semesterStatus.classList.toggle("inactive", !isConfigured);
+  manageTimetable.disabled = !isConfigured;
+  semesterStatus.textContent = isConfigured
+    ? `${semester.name} · ${formatDate(parseISODate(semester.startDate))} - ${formatDate(parseISODate(semester.endDate))} · 내 시간표 ${timetable.length}개`
+    : "관리자가 학기 적용 기간을 설정하면 시간표를 등록할 수 있습니다.";
+}
+
 function makeStorageKeys(username) {
   const userKey = encodeURIComponent(String(username || "anonymous").trim().toLowerCase());
   const prefix = `worklog-calendar-prototype:${userKey}`;
@@ -906,6 +1045,7 @@ function makeStorageKeys(username) {
     tagColors: `${prefix}:tag-colors`,
     tagMeals: `${prefix}:tag-meals`,
     tagTargets: `${prefix}:tag-targets`,
+    timetable: `${prefix}:timetable`,
     hiddenCalendarTags: `${prefix}:hidden-calendar-tags`,
     weekClipboard: `${prefix}:week-clipboard`
   };
@@ -919,6 +1059,7 @@ function readLocalCalendarData() {
     tagColors: loadJsonFromStorage(storageKeys.tagColors, {}),
     tagMealSettings: loadJsonFromStorage(storageKeys.tagMeals, {}),
     tagTargetMinutes: loadJsonFromStorage(storageKeys.tagTargets, {}),
+    timetable: loadJsonFromStorage(storageKeys.timetable, []),
     weekClipboard: loadJsonFromStorage(storageKeys.weekClipboard, [])
   };
 }
@@ -931,6 +1072,7 @@ function applyCalendarData(data) {
   weekendWorkdays = new Set(normalized.weekendWorkdays);
   tagTargetMinutes = normalized.tagTargetMinutes;
   tagMealSettings = normalized.tagMealSettings;
+  timetable = normalized.timetable;
   writeLocalCalendarData(normalized);
 }
 
@@ -941,6 +1083,7 @@ function writeLocalCalendarData(data) {
   localStorage.setItem(storageKeys.tagColors, JSON.stringify(data.tagColors || {}));
   localStorage.setItem(storageKeys.tagMeals, JSON.stringify(data.tagMealSettings || {}));
   localStorage.setItem(storageKeys.tagTargets, JSON.stringify(data.tagTargetMinutes || {}));
+  localStorage.setItem(storageKeys.timetable, JSON.stringify(data.timetable || []));
   localStorage.setItem(storageKeys.weekClipboard, JSON.stringify(data.weekClipboard || []));
 }
 
@@ -952,6 +1095,7 @@ function getCurrentCalendarData() {
     tagColors,
     tagMealSettings,
     tagTargetMinutes,
+    timetable,
     weekClipboard: loadWeekClipboard()
   };
 }
@@ -964,6 +1108,7 @@ function getEmptyCalendarData() {
     tagColors: {},
     tagMealSettings: {},
     tagTargetMinutes: {},
+    timetable: [],
     weekClipboard: []
   };
 }
@@ -977,6 +1122,7 @@ function normalizeCalendarData(data) {
     tagColors: isPlainObject(source.tagColors) ? source.tagColors : {},
     tagMealSettings: isPlainObject(source.tagMealSettings) ? source.tagMealSettings : {},
     tagTargetMinutes: isPlainObject(source.tagTargetMinutes) ? source.tagTargetMinutes : {},
+    timetable: Array.isArray(source.timetable) ? source.timetable.map(normalizeTimetableEntry).filter(Boolean) : [],
     weekClipboard: Array.isArray(source.weekClipboard) ? source.weekClipboard : []
   };
 }
@@ -989,7 +1135,8 @@ function hasCalendarData(data) {
     || normalized.weekClipboard.length > 0
     || Object.keys(normalized.tagColors).length > 0
     || Object.keys(normalized.tagMealSettings).length > 0
-    || Object.keys(normalized.tagTargetMinutes).length > 0;
+    || Object.keys(normalized.tagTargetMinutes).length > 0
+    || normalized.timetable.length > 0;
 }
 
 function queueCalendarDataSave() {
@@ -1023,6 +1170,32 @@ function loadJsonFromStorage(key, fallback) {
 
 function isPlainObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function normalizeSemester(value) {
+  const source = isPlainObject(value) ? value : {};
+  return {
+    endDate: String(source.endDate || ""),
+    name: String(source.name || "").trim(),
+    startDate: String(source.startDate || "")
+  };
+}
+
+function normalizeTimetableEntry(entry) {
+  if (!isPlainObject(entry)) return null;
+  const dayOfWeek = Number(entry.dayOfWeek);
+  const start = String(entry.start || "");
+  const end = String(entry.end || "");
+  const title = String(entry.title || "").trim();
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !title || !start || !end) return null;
+  if (timeToMinutes(end) <= timeToMinutes(start)) return null;
+  return {
+    dayOfWeek,
+    end,
+    id: String(entry.id || makeId()),
+    start,
+    title
+  };
 }
 
 function migrateLegacyStorage(session) {
@@ -1066,6 +1239,7 @@ function render() {
   renderCalendarTagFilters();
   renderTagControls();
   updatePublicHolidayStatus();
+  updateSemesterStatus();
   void ensurePublicHolidaysForVisibleDates().then((changed) => {
     if (changed) render();
   });
@@ -1265,7 +1439,9 @@ function renderShiftList(weekShifts, overlapIds) {
     items.forEach((shift) => {
       const item = template.content.firstElementChild.cloneNode(true);
       const holiday = isHoliday(shift.date);
+      const classConflict = getTimetableConflicts([shift])[0];
       item.classList.toggle("overlap", overlapIds.has(shift.id));
+      item.classList.toggle("class-conflict", Boolean(classConflict));
       item.classList.toggle("selected", selectedShiftId === shift.id);
       item.classList.toggle("holiday-excluded", holiday);
       item.querySelector(".item-title").textContent = shift.title;
@@ -1280,7 +1456,7 @@ function renderShiftList(weekShifts, overlapIds) {
       item.querySelector(".item-meta").textContent =
         holiday
           ? `${formatDate(parseISODate(shift.date))} ${shift.start}-${shift.end} · 휴일 제외`
-          : `${formatDate(parseISODate(shift.date))} ${shift.start}-${shift.end} · 자동 식사차감 ${formatDuration(getMealDeductionMinutes(shift))} · 실근무 ${formatDuration(getNetMinutes(shift))}`;
+          : `${formatDate(parseISODate(shift.date))} ${shift.start}-${shift.end} · 자동 식사차감 ${formatDuration(getMealDeductionMinutes(shift))} · 실근무 ${formatDuration(getNetMinutes(shift))}${classConflict ? ` · 수업 겹침: ${classConflict.entry.title}` : ""}`;
       item.querySelectorAll("[data-action]").forEach((button) => {
         button.dataset.id = shift.id;
       });
@@ -1332,6 +1508,7 @@ function renderCalendar(weekShifts, overlapIds) {
           ? "클릭하면 주말 휴일 처리를 다시 적용합니다."
           : "";
     const dayShifts = weekShifts.filter((shift) => shift.date === iso);
+    const dayClasses = getClassesForDate(iso);
     const countedDayShifts = holiday ? [] : dayShifts;
     const column = document.createElement("article");
     column.className = `day-column${holiday ? " holiday" : ""}`;
@@ -1351,6 +1528,7 @@ function renderCalendar(weekShifts, overlapIds) {
     const body = column.querySelector(".day-body");
     body.dataset.date = iso;
     renderTimeLabels(body);
+    dayClasses.forEach((entry) => body.append(makeTimetableBlock(entry)));
     layoutDayShifts(dayShifts).forEach((entry) => {
       body.append(makeShiftBlock(entry.shift, overlapIds.has(entry.shift.id), entry.lane, entry.laneCount, holiday));
     });
@@ -1372,6 +1550,7 @@ function renderMonthCalendar() {
   getMonthGridDays(currentMonthStart).forEach((date) => {
     const iso = toISODate(date);
     const dayShifts = getDayShifts(iso).filter(isCalendarTagVisible);
+    const dayClasses = getClassesForDate(iso);
     const holidayInfo = getHolidayInfo(iso);
     const holiday = Boolean(holidayInfo);
     const monthHolidayLabel = holidayInfo?.type === "public"
@@ -1399,6 +1578,7 @@ function renderMonthCalendar() {
         <strong>${total > 0 ? formatDuration(total) : ""}</strong>
       </div>
       ${monthHolidayLabel ? `<span class="month-holiday-name">${escapeHtml(monthHolidayLabel)}</span>` : ""}
+      ${dayClasses.length > 0 ? `<span class="month-class-count">수업 ${dayClasses.length}개</span>` : ""}
       <div class="month-day-shifts"></div>
     `;
 
@@ -1422,6 +1602,7 @@ function makeMonthShiftChip(shift, isExcluded = false) {
   const color = getTagColor(getShiftTag(shift));
   const chip = document.createElement("span");
   chip.className = `month-shift-chip${isExcluded ? " holiday-excluded" : ""}`;
+  chip.classList.toggle("class-conflict", getTimetableConflicts([shift]).length > 0);
   chip.dataset.id = shift.id;
   chip.style.setProperty("--tag-bg", color.bg);
   chip.style.setProperty("--tag-border", color.border);
@@ -1458,8 +1639,11 @@ function finishMonthDrag() {
   const shift = shifts.find((item) => item.id === id);
   if (!shift || shift.date === targetDate) return;
 
+  const moved = { ...shift, date: targetDate };
+  if (!confirmTimetableConflicts([moved], "이동")) return;
+
   shifts = shifts.map((item) => (
-    item.id === id ? { ...item, date: targetDate } : item
+    item.id === id ? moved : item
   ));
   selectedShiftId = id;
   currentWeekStart = startOfWeek(parseISODate(targetDate));
@@ -1495,6 +1679,23 @@ function renderTimeLabels(body) {
   }
 }
 
+function makeTimetableBlock(entry) {
+  const start = timeToMinutes(entry.start);
+  const end = timeToMinutes(entry.end);
+  if (end <= VIEW_START_MINUTES || start >= VIEW_END_MINUTES) {
+    return document.createDocumentFragment();
+  }
+  const visibleStart = Math.max(start, VIEW_START_MINUTES);
+  const visibleEnd = Math.min(end, VIEW_END_MINUTES);
+  const block = document.createElement("div");
+  block.className = "timetable-block";
+  block.style.top = `${((visibleStart - VIEW_START_MINUTES) / 60) * HOUR_HEIGHT}px`;
+  block.style.height = `${Math.max(((visibleEnd - visibleStart) / 60) * HOUR_HEIGHT, 24)}px`;
+  block.title = `${entry.title} ${entry.start}-${entry.end}`;
+  block.innerHTML = `<strong>${escapeHtml(entry.title)}</strong><span>${escapeHtml(entry.start)}-${escapeHtml(entry.end)}</span>`;
+  return block;
+}
+
 function makeShiftBlock(shift, isOverlap, lane = 0, laneCount = 1, isExcluded = false) {
   const start = timeToMinutes(shift.start);
   const end = timeToMinutes(shift.end);
@@ -1512,6 +1713,7 @@ function makeShiftBlock(shift, isOverlap, lane = 0, laneCount = 1, isExcluded = 
   const leftPxOffset = leftBase - (chromeWidth * lane) / laneCount + gutter * lane - (gutter * (laneCount - 1) * lane) / laneCount;
   const block = document.createElement("div");
   block.className = `shift-block${isOverlap ? " overlap" : ""}`;
+  block.classList.toggle("class-conflict", getTimetableConflicts([shift]).length > 0);
   block.classList.toggle("holiday-excluded", isExcluded);
   block.classList.toggle("selected", selectedShiftId === shift.id);
   const tagColor = getTagColor(getShiftTag(shift));
@@ -1650,6 +1852,27 @@ function isWeekendDate(date) {
   return day === 0 || day === 6;
 }
 
+function getClassesForDate(date) {
+  if (!semester.startDate || !semester.endDate || date < semester.startDate || date > semester.endDate) return [];
+  const browserDay = parseISODate(date).getDay();
+  const dayOfWeek = browserDay === 0 ? 7 : browserDay;
+  return timetable.filter((entry) => entry.dayOfWeek === dayOfWeek);
+}
+
+function getTimetableConflicts(items) {
+  return items.flatMap((item) => getClassesForDate(item.date)
+    .filter((entry) => timeToMinutes(item.start) < timeToMinutes(entry.end) && timeToMinutes(entry.start) < timeToMinutes(item.end))
+    .map((entry) => ({ entry, item })));
+}
+
+function confirmTimetableConflicts(items, actionLabel) {
+  const conflicts = getTimetableConflicts(items);
+  if (conflicts.length === 0) return true;
+  const examples = [...new Set(conflicts.slice(0, 3).map(({ entry, item }) => `${item.date} ${entry.title}(${entry.start}-${entry.end})`))];
+  const suffix = conflicts.length > examples.length ? ` 외 ${conflicts.length - examples.length}건` : "";
+  return confirm(`수업 시간과 겹치는 일정이 ${conflicts.length}건 있습니다.\n${examples.join("\n")}${suffix}\n\n그래도 ${actionLabel}할까요?`);
+}
+
 function showCreatePreview(selection) {
   clearCreatePreview();
   const start = selection.previewStart ?? selection.start;
@@ -1717,6 +1940,58 @@ function openCreateModal() {
   editTitle.focus();
   editTitle.select();
   renderTagControls();
+}
+
+function openTimetableModalDialog() {
+  if (!semester.name || !semester.startDate || !semester.endDate) {
+    alert("관리자가 학기 적용 기간을 먼저 설정해야 합니다.");
+    return;
+  }
+  timetableSemesterSummary.textContent = `${semester.name} · ${formatDate(parseISODate(semester.startDate))} - ${formatDate(parseISODate(semester.endDate))}`;
+  resetTimetableEntryForm();
+  renderTimetableList();
+  timetableModal.classList.remove("hidden");
+  timetableTitle.focus();
+}
+
+function closeTimetableModalDialog() {
+  timetableModal.classList.add("hidden");
+  timetableEntryForm.reset();
+}
+
+function resetTimetableEntryForm() {
+  timetableEntryForm.reset();
+  timetableEntryId.value = "";
+  timetableDayOfWeek.value = "1";
+  timetableStart.value = "09:00";
+  timetableEnd.value = "10:00";
+  timetableSubmit.textContent = "수업 추가";
+  cancelTimetableEdit.classList.add("hidden");
+}
+
+function renderTimetableList() {
+  if (timetable.length === 0) {
+    timetableList.innerHTML = '<div class="empty-state compact">등록된 수업이 없습니다.</div>';
+    return;
+  }
+  timetableList.innerHTML = [...timetable]
+    .sort(compareTimetableEntries)
+    .map((entry) => `
+      <article class="timetable-item">
+        <div>
+          <strong>${escapeHtml(entry.title)}</strong>
+          <span>${dayNames[entry.dayOfWeek - 1]}요일 · ${escapeHtml(entry.start)}-${escapeHtml(entry.end)}</span>
+        </div>
+        <div class="item-actions">
+          <button type="button" class="action-button edit-button" data-edit-class="${escapeHtml(entry.id)}">수정</button>
+          <button type="button" class="action-button delete-button" data-delete-class="${escapeHtml(entry.id)}">삭제</button>
+        </div>
+      </article>
+    `).join("");
+}
+
+function compareTimetableEntries(left, right) {
+  return left.dayOfWeek - right.dayOfWeek || left.start.localeCompare(right.start) || left.title.localeCompare(right.title, "ko-KR");
 }
 
 function closeModal() {
@@ -1810,6 +2085,7 @@ function importParsedWorklogEntries() {
     entry.start,
     entry.end
   ));
+  if (!confirmTimetableConflicts(imported, "가져오기")) return;
   shifts = [...shifts, ...imported];
   selectedShiftId = imported[0]?.id || null;
   if (imported[0]) {
@@ -2142,13 +2418,17 @@ function hasOverlap(a, b) {
 
 function makeShift(title, tag, date, start, end) {
   return {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    id: makeId(),
     title,
     tag: normalizeTag(tag),
     date,
     start,
     end
   };
+}
+
+function makeId() {
+  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
 function normalizeTag(tag) {
@@ -2431,6 +2711,11 @@ function setWeekClipboard(copied) {
 
 function saveShifts() {
   localStorage.setItem(storageKeys.shifts, JSON.stringify(shifts));
+  queueCalendarDataSave();
+}
+
+function saveTimetable() {
+  localStorage.setItem(storageKeys.timetable, JSON.stringify(timetable));
   queueCalendarDataSave();
 }
 
