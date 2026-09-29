@@ -898,10 +898,17 @@ button:disabled {
   font-size: 12px;
 }
 
+.holiday-row {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+  gap: 5px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
 .day-head .holiday-name {
-  display: block;
-  min-height: 15px;
-  margin-top: 3px;
+  min-width: 0;
   overflow: hidden;
   color: #b42318;
   font-size: 10px;
@@ -919,7 +926,7 @@ button:disabled {
 }
 
 .holiday-toggle {
-  margin-top: 8px;
+  flex: 0 0 auto;
   height: 26px;
   border: 1px solid #c9d1e2;
   border-radius: 999px;
@@ -936,7 +943,7 @@ button:disabled {
   background: #fee2e2;
 }
 
-.holiday-toggle.official:disabled {
+.holiday-toggle.automatic:disabled {
   cursor: default;
   opacity: 1;
 }

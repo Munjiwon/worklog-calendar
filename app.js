@@ -249,7 +249,7 @@ calendar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-holiday-toggle]");
   if (!button) return;
   const date = button.dataset.holidayToggle;
-  if (publicHolidays.has(date)) return;
+  if (getHolidayInfo(date)?.automatic) return;
   if (holidays.has(date)) {
     holidays.delete(date);
   } else {
@@ -1290,7 +1290,20 @@ function renderCalendar(weekShifts, overlapIds) {
     const iso = toISODate(date);
     const holidayInfo = getHolidayInfo(iso);
     const holiday = Boolean(holidayInfo);
-    const automaticHoliday = publicHolidays.has(iso);
+    const automaticHoliday = Boolean(holidayInfo?.automatic);
+    const holidayName = holidayInfo?.type === "public" ? holidayInfo.name : "";
+    const holidayLabel = holidayInfo?.type === "public"
+      ? "국가공휴일"
+      : holidayInfo?.type === "weekend"
+        ? "주말"
+        : holidayInfo?.type === "manual"
+          ? "휴일 해제"
+          : "휴일 지정";
+    const holidayTitle = holidayInfo?.type === "public"
+      ? "국가공휴일은 자동으로 적용됩니다."
+      : holidayInfo?.type === "weekend"
+        ? "주말은 자동으로 휴일 처리됩니다."
+        : "";
     const dayShifts = weekShifts.filter((shift) => shift.date === iso);
     const countedDayShifts = holiday ? [] : dayShifts;
     const column = document.createElement("article");
@@ -1299,8 +1312,10 @@ function renderCalendar(weekShifts, overlapIds) {
       <header class="day-head">
         <strong>${dayNames[index]}</strong>
         <span>${formatDate(date)}</span>
-        <span class="holiday-name">${holidayInfo ? escapeHtml(holidayInfo.name) : "&nbsp;"}</span>
-        <button type="button" class="holiday-toggle${holiday ? " active" : ""}${automaticHoliday ? " official" : ""}" data-holiday-toggle="${iso}"${automaticHoliday ? " disabled title=\"국가공휴일은 자동으로 적용됩니다.\"" : ""}>${automaticHoliday ? "국가공휴일" : holiday ? "휴일 해제" : "휴일 지정"}</button>
+        <div class="holiday-row">
+          ${holidayName ? `<span class="holiday-name" title="${escapeHtml(holidayName)}">${escapeHtml(holidayName)}</span>` : ""}
+          <button type="button" class="holiday-toggle${holiday ? " active" : ""}${automaticHoliday ? " automatic" : ""}" data-holiday-toggle="${iso}"${automaticHoliday ? ` disabled title="${holidayTitle}"` : ""}>${holidayLabel}</button>
+        </div>
         <div class="day-total">실근무 ${formatDuration(countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0))}</div>
       </header>
       <div class="day-body"></div>
@@ -1332,6 +1347,11 @@ function renderMonthCalendar() {
     const dayShifts = getDayShifts(iso).filter(isCalendarTagVisible);
     const holidayInfo = getHolidayInfo(iso);
     const holiday = Boolean(holidayInfo);
+    const monthHolidayLabel = holidayInfo?.type === "public"
+      ? holidayInfo.name
+      : holidayInfo?.type === "weekend"
+        ? "주말"
+        : "";
     const countedDayShifts = holiday ? [] : dayShifts;
     const total = countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0);
     const isCurrentMonth = date.getMonth() === currentMonthStart.getMonth();
@@ -1351,7 +1371,7 @@ function renderMonthCalendar() {
         <span>${date.getDate()}</span>
         <strong>${total > 0 ? formatDuration(total) : ""}</strong>
       </div>
-      ${holidayInfo ? `<span class="month-holiday-name">${escapeHtml(holidayInfo.name)}</span>` : ""}
+      ${monthHolidayLabel ? `<span class="month-holiday-name">${escapeHtml(monthHolidayLabel)}</span>` : ""}
       <div class="month-day-shifts"></div>
     `;
 
@@ -1587,12 +1607,20 @@ function isHoliday(date) {
 
 function getHolidayInfo(date) {
   if (publicHolidays.has(date)) {
-    return { automatic: true, name: publicHolidays.get(date) };
+    return { automatic: true, name: publicHolidays.get(date), type: "public" };
   }
   if (holidays.has(date)) {
-    return { automatic: false, name: "수동 휴일" };
+    return { automatic: false, name: "", type: "manual" };
+  }
+  if (isWeekendDate(date)) {
+    return { automatic: true, name: "주말", type: "weekend" };
   }
   return null;
+}
+
+function isWeekendDate(date) {
+  const day = parseISODate(date).getDay();
+  return day === 0 || day === 6;
 }
 
 function showCreatePreview(selection) {
