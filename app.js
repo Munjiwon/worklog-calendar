@@ -43,6 +43,7 @@ const mealSettings = document.querySelector("#mealSettings");
 const tagSummary = document.querySelector("#tagSummary");
 const calendarTagFilters = document.querySelector("#calendarTagFilters");
 const showAllCalendarTags = document.querySelector("#showAllCalendarTags");
+const publicHolidayStatus = document.querySelector("#publicHolidayStatus");
 const createShift = document.querySelector("#createShift");
 const importWorklogPdf = document.querySelector("#importWorklogPdf");
 const clearAll = document.querySelector("#clearAll");
@@ -105,6 +106,10 @@ let currentSession = null;
 let shifts = [];
 let tagColors = {};
 let holidays = new Set();
+const publicHolidays = new Map();
+const loadedPublicHolidayYears = new Set();
+const failedPublicHolidayYears = new Set();
+const pendingPublicHolidayYears = new Set();
 let tagTargetMinutes = {};
 let tagMealSettings = {};
 let draggingShiftId = null;
@@ -244,6 +249,7 @@ calendar.addEventListener("click", (event) => {
   const button = event.target.closest("[data-holiday-toggle]");
   if (!button) return;
   const date = button.dataset.holidayToggle;
+  if (publicHolidays.has(date)) return;
   if (holidays.has(date)) {
     holidays.delete(date);
   } else {
@@ -751,6 +757,7 @@ async function initializeApp() {
   const localData = readLocalCalendarData();
   const initialData = serverRecord.exists ? serverRecord.data : localData;
   applyCalendarData(initialData);
+  await ensurePublicHolidaysForVisibleDates();
   if (!serverRecord.exists && hasCalendarData(localData)) {
     queueCalendarDataSave();
   }
@@ -797,6 +804,82 @@ async function loadServerCalendarData() {
   } catch {
     return { data: getEmptyCalendarData(), exists: false };
   }
+}
+
+async function ensurePublicHolidaysForVisibleDates() {
+  const years = getVisibleCalendarYears();
+  const results = await Promise.all(years.map(loadPublicHolidayYear));
+  return results.some(Boolean);
+}
+
+async function loadPublicHolidayYear(year) {
+  const maximumYear = new Date().getFullYear() + 1;
+  if (
+    year < 2004
+    || year > maximumYear
+    || loadedPublicHolidayYears.has(year)
+    || failedPublicHolidayYears.has(year)
+    || pendingPublicHolidayYears.has(year)
+  ) {
+    return false;
+  }
+
+  pendingPublicHolidayYears.add(year);
+  updatePublicHolidayStatus();
+  try {
+    const response = await fetch(`/api/public-holidays?year=${year}`, {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) throw new Error("public holiday request failed");
+    const result = await response.json();
+    (result.holidays || []).forEach((holiday) => {
+      if (holiday?.date && holiday?.name) {
+        publicHolidays.set(String(holiday.date), String(holiday.name));
+      }
+    });
+    loadedPublicHolidayYears.add(year);
+    return true;
+  } catch {
+    failedPublicHolidayYears.add(year);
+    return false;
+  } finally {
+    pendingPublicHolidayYears.delete(year);
+    updatePublicHolidayStatus();
+  }
+}
+
+function getVisibleCalendarYears() {
+  const monthDays = getMonthGridDays(currentMonthStart);
+  return [...new Set([
+    currentWeekStart.getFullYear(),
+    addDays(currentWeekStart, 6).getFullYear(),
+    monthDays[0].getFullYear(),
+    monthDays.at(-1).getFullYear()
+  ])];
+}
+
+function updatePublicHolidayStatus() {
+  const visibleYears = getVisibleCalendarYears();
+  const maximumYear = new Date().getFullYear() + 1;
+  if (visibleYears.some((year) => year < 2004 || year > maximumYear)) {
+    publicHolidayStatus.textContent = `국가공휴일 자동 조회는 2004-${maximumYear}년을 지원합니다.`;
+    publicHolidayStatus.classList.add("error");
+    return;
+  }
+  if (visibleYears.some((year) => pendingPublicHolidayYears.has(year))) {
+    publicHolidayStatus.textContent = "대한민국 국가공휴일을 불러오는 중입니다.";
+    publicHolidayStatus.classList.remove("error");
+    return;
+  }
+  if (visibleYears.some((year) => failedPublicHolidayYears.has(year))) {
+    publicHolidayStatus.textContent = "국가공휴일을 불러오지 못했습니다. 수동 휴일 지정은 계속 사용할 수 있습니다.";
+    publicHolidayStatus.classList.add("error");
+    return;
+  }
+  publicHolidayStatus.textContent = "대한민국 국가공휴일 자동 적용 중 · 한국천문연구원 공공데이터";
+  publicHolidayStatus.classList.remove("error");
 }
 
 function makeStorageKeys(username) {
@@ -960,6 +1043,10 @@ function render() {
   renderMonthCalendar();
   renderCalendarTagFilters();
   renderTagControls();
+  updatePublicHolidayStatus();
+  void ensurePublicHolidaysForVisibleDates().then((changed) => {
+    if (changed) render();
+  });
 }
 
 function getWeekShifts(weekStart) {
@@ -1201,7 +1288,9 @@ function renderCalendar(weekShifts, overlapIds) {
   for (let index = 0; index < 7; index += 1) {
     const date = addDays(currentWeekStart, index);
     const iso = toISODate(date);
-    const holiday = isHoliday(iso);
+    const holidayInfo = getHolidayInfo(iso);
+    const holiday = Boolean(holidayInfo);
+    const automaticHoliday = publicHolidays.has(iso);
     const dayShifts = weekShifts.filter((shift) => shift.date === iso);
     const countedDayShifts = holiday ? [] : dayShifts;
     const column = document.createElement("article");
@@ -1210,7 +1299,8 @@ function renderCalendar(weekShifts, overlapIds) {
       <header class="day-head">
         <strong>${dayNames[index]}</strong>
         <span>${formatDate(date)}</span>
-        <button type="button" class="holiday-toggle${holiday ? " active" : ""}" data-holiday-toggle="${iso}">${holiday ? "휴일" : "휴일 지정"}</button>
+        <span class="holiday-name">${holidayInfo ? escapeHtml(holidayInfo.name) : "&nbsp;"}</span>
+        <button type="button" class="holiday-toggle${holiday ? " active" : ""}${automaticHoliday ? " official" : ""}" data-holiday-toggle="${iso}"${automaticHoliday ? " disabled title=\"국가공휴일은 자동으로 적용됩니다.\"" : ""}>${automaticHoliday ? "국가공휴일" : holiday ? "휴일 해제" : "휴일 지정"}</button>
         <div class="day-total">실근무 ${formatDuration(countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0))}</div>
       </header>
       <div class="day-body"></div>
@@ -1240,7 +1330,8 @@ function renderMonthCalendar() {
   getMonthGridDays(currentMonthStart).forEach((date) => {
     const iso = toISODate(date);
     const dayShifts = getDayShifts(iso).filter(isCalendarTagVisible);
-    const holiday = isHoliday(iso);
+    const holidayInfo = getHolidayInfo(iso);
+    const holiday = Boolean(holidayInfo);
     const countedDayShifts = holiday ? [] : dayShifts;
     const total = countedDayShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0);
     const isCurrentMonth = date.getMonth() === currentMonthStart.getMonth();
@@ -1260,6 +1351,7 @@ function renderMonthCalendar() {
         <span>${date.getDate()}</span>
         <strong>${total > 0 ? formatDuration(total) : ""}</strong>
       </div>
+      ${holidayInfo ? `<span class="month-holiday-name">${escapeHtml(holidayInfo.name)}</span>` : ""}
       <div class="month-day-shifts"></div>
     `;
 
@@ -1490,7 +1582,17 @@ function getCountedShifts(items) {
 }
 
 function isHoliday(date) {
-  return holidays.has(date);
+  return Boolean(getHolidayInfo(date));
+}
+
+function getHolidayInfo(date) {
+  if (publicHolidays.has(date)) {
+    return { automatic: true, name: publicHolidays.get(date) };
+  }
+  if (holidays.has(date)) {
+    return { automatic: false, name: "수동 휴일" };
+  }
+  return null;
 }
 
 function showCreatePreview(selection) {

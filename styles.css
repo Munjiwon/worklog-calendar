@@ -516,6 +516,23 @@ select {
   accent-color: var(--tag-border, var(--primary));
 }
 
+.public-holiday-status {
+  margin: -4px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  color: #1e3a8a;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.public-holiday-status.error {
+  border-color: #fed7aa;
+  color: #9a3412;
+  background: #fff7ed;
+}
+
 .panel-header,
 .calendar-header {
   display: flex;
@@ -881,6 +898,19 @@ button:disabled {
   font-size: 12px;
 }
 
+.day-head .holiday-name {
+  display: block;
+  min-height: 15px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #b42318;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .day-total {
   margin-top: 6px;
   color: var(--accent);
@@ -904,6 +934,11 @@ button:disabled {
   color: #7f1d1d;
   border-color: #fecaca;
   background: #fee2e2;
+}
+
+.holiday-toggle.official:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .day-body {
@@ -1159,6 +1194,17 @@ button:disabled {
   font-size: 11px;
   font-weight: 900;
   text-align: right;
+}
+
+.month-holiday-name {
+  display: block;
+  overflow: hidden;
+  color: #b42318;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .month-day-shifts {

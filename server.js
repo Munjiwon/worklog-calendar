@@ -3,6 +3,7 @@ const fs = require("fs/promises");
 const http = require("http");
 const path = require("path");
 const { Pool } = require("pg");
+const { holidays: fetchKoreanPublicHolidays } = require("@kyungseopk1m/holidays-kr");
 const { createCanvas, DOMMatrix, ImageData, Path2D } = require("@napi-rs/canvas");
 const koreanLanguage = require("@tesseract.js-data/kor");
 const pdfParse = require("pdf-parse");
@@ -106,6 +107,15 @@ const server = http.createServer(async (request, response) => {
         role: session.role,
         username: session.sub
       });
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/public-holidays") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      await handleGetPublicHolidays(response, url.searchParams.get("year"));
       return;
     }
 
@@ -246,6 +256,48 @@ async function handleRegister(request, response) {
   await createUser(user);
   setSessionCookie(response, user);
   redirect(response, "/");
+}
+
+async function handleGetPublicHolidays(response, yearValue) {
+  const year = Number(yearValue);
+  const maximumYear = new Date().getFullYear() + 1;
+  if (!Number.isInteger(year) || year < 2004 || year > maximumYear) {
+    sendJson(response, 400, { error: `공휴일은 2004-${maximumYear}년까지 조회할 수 있습니다.` });
+    return;
+  }
+
+  try {
+    const result = await fetchKoreanPublicHolidays(String(year), undefined, {
+      signal: AbortSignal.timeout(8_000)
+    });
+    if (!result?.success || !Array.isArray(result.data)) {
+      throw new Error(result?.message || "공휴일 데이터 응답이 올바르지 않습니다.");
+    }
+    sendJson(response, 200, {
+      holidays: normalizePublicHolidays(result.data),
+      source: "한국천문연구원 공공데이터",
+      year
+    });
+  } catch (error) {
+    console.error(`Failed to load Korean public holidays for ${year}:`, error.message);
+    sendJson(response, 502, { error: "국가공휴일 정보를 불러오지 못했습니다." });
+  }
+}
+
+function normalizePublicHolidays(items) {
+  const byDate = new Map();
+  items.forEach((item) => {
+    const digits = String(item?.date || "").replace(/\D/g, "");
+    if (!/^\d{8}$/.test(digits)) return;
+    const date = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+    const name = String(item?.name || "공휴일").trim() || "공휴일";
+    const names = byDate.get(date) || [];
+    if (!names.includes(name)) names.push(name);
+    byDate.set(date, names);
+  });
+  return [...byDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, names]) => ({ date, name: names.join(" · ") }));
 }
 
 async function handleCreateUser(request, response) {
@@ -1174,5 +1226,6 @@ function sendJson(response, status, data) {
 
 module.exports = {
   extractWorklogEntriesFromPdf,
+  normalizePublicHolidays,
   parseWorklogEntries
 };
