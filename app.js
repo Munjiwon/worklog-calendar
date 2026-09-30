@@ -105,6 +105,7 @@ const closeTimetableModal = document.querySelector("#closeTimetableModal");
 const timetableSemesterSummary = document.querySelector("#timetableSemesterSummary");
 const timetableEntryForm = document.querySelector("#timetableEntryForm");
 const timetableEntryId = document.querySelector("#timetableEntryId");
+const timetableSemester = document.querySelector("#timetableSemester");
 const timetableDayOfWeek = document.querySelector("#timetableDayOfWeek");
 const timetableTitle = document.querySelector("#timetableTitle");
 const timetableStart = document.querySelector("#timetableStart");
@@ -128,7 +129,7 @@ const pendingPublicHolidayYears = new Set();
 let tagTargetMinutes = {};
 let tagMealSettings = {};
 let timetable = [];
-let semester = { endDate: "", name: "", startDate: "" };
+let semesters = [];
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
@@ -170,6 +171,7 @@ timetableEntryForm.addEventListener("submit", (event) => {
     dayOfWeek: Number(timetableDayOfWeek.value),
     end,
     id: timetableEntryId.value || makeId(),
+    semesterId: timetableSemester.value,
     start,
     title: timetableTitle.value.trim()
   };
@@ -192,6 +194,8 @@ timetableList.addEventListener("click", (event) => {
     const entry = timetable.find((item) => item.id === editButton.dataset.editClass);
     if (!entry) return;
     timetableEntryId.value = entry.id;
+    timetableSemester.value = entry.semesterId;
+    updateTimetableSemesterSummary();
     timetableDayOfWeek.value = String(entry.dayOfWeek);
     timetableTitle.value = entry.title;
     timetableStart.value = entry.start;
@@ -208,6 +212,8 @@ timetableList.addEventListener("click", (event) => {
   renderTimetableList();
   render();
 });
+
+timetableSemester.addEventListener("change", updateTimetableSemesterSummary);
 
 cancelTimetableEdit.addEventListener("click", () => {
   resetTimetableEntryForm();
@@ -887,14 +893,15 @@ async function initializeApp() {
   hiddenCalendarTags = loadHiddenCalendarTags();
   updateToolbarForSession(currentSession);
   migrateLegacyStorage(currentSession);
-  const [serverRecord, loadedSemester] = await Promise.all([
+  const [serverRecord, loadedSemesters] = await Promise.all([
     loadServerCalendarData(),
-    loadSemesterSetting()
+    loadSemesterSettings()
   ]);
-  semester = loadedSemester;
+  semesters = loadedSemesters;
   const localData = readLocalCalendarData();
   const initialData = serverRecord.exists ? serverRecord.data : localData;
   applyCalendarData(initialData);
+  if (migrateLegacyTimetableEntries()) saveTimetable();
   await ensurePublicHolidaysForVisibleDates();
   if (!serverRecord.exists && hasCalendarData(localData)) {
     queueCalendarDataSave();
@@ -957,18 +964,18 @@ async function loadServerCalendarData() {
   }
 }
 
-async function loadSemesterSetting() {
+async function loadSemesterSettings() {
   try {
-    const response = await fetch("/api/semester", {
+    const response = await fetch("/api/semesters", {
       headers: {
         Accept: "application/json"
       }
     });
-    if (!response.ok) throw new Error("semester request failed");
+    if (!response.ok) throw new Error("semesters request failed");
     const result = await response.json();
-    return normalizeSemester(result.semester);
+    return (result.semesters || []).map(normalizeSemester).filter((semester) => semester.id);
   } catch {
-    return { endDate: "", name: "", startDate: "" };
+    return [];
   }
 }
 
@@ -1049,12 +1056,14 @@ function updatePublicHolidayStatus() {
 }
 
 function updateSemesterStatus() {
-  const isConfigured = Boolean(semester.name && semester.startDate && semester.endDate);
+  const isConfigured = semesters.length > 0;
+  const today = toISODate(new Date());
+  const active = semesters.find((semester) => semester.startDate <= today && today <= semester.endDate);
   semesterStatus.classList.toggle("inactive", !isConfigured);
   manageTimetable.disabled = !isConfigured;
   semesterStatus.textContent = isConfigured
-    ? `${semester.name} · ${formatDate(parseISODate(semester.startDate))} - ${formatDate(parseISODate(semester.endDate))} · 내 시간표 ${timetable.length}개`
-    : "관리자가 학기 적용 기간을 설정하면 시간표를 등록할 수 있습니다.";
+    ? `등록 학기 ${semesters.length}개${active ? ` · 현재 ${active.name}` : ""} · 내 수업 ${timetable.length}개`
+    : "관리자가 학기를 등록하면 시간표를 등록할 수 있습니다.";
 }
 
 function makeStorageKeys(username) {
@@ -1198,6 +1207,7 @@ function normalizeSemester(value) {
   const source = isPlainObject(value) ? value : {};
   return {
     endDate: String(source.endDate || ""),
+    id: String(source.id || ""),
     name: String(source.name || "").trim(),
     startDate: String(source.startDate || "")
   };
@@ -1215,9 +1225,18 @@ function normalizeTimetableEntry(entry) {
     dayOfWeek,
     end,
     id: String(entry.id || makeId()),
+    semesterId: String(entry.semesterId || ""),
     start,
     title
   };
+}
+
+function migrateLegacyTimetableEntries() {
+  if (timetable.every((entry) => entry.semesterId) || semesters.length === 0) return false;
+  const today = toISODate(new Date());
+  const fallbackSemester = semesters.find((semester) => semester.startDate <= today && today <= semester.endDate) || semesters[0];
+  timetable = timetable.map((entry) => entry.semesterId ? entry : { ...entry, semesterId: fallbackSemester.id });
+  return true;
 }
 
 function migrateLegacyStorage(session) {
@@ -1875,10 +1894,13 @@ function isWeekendDate(date) {
 }
 
 function getClassesForDate(date) {
-  if (!semester.startDate || !semester.endDate || date < semester.startDate || date > semester.endDate) return [];
+  const applicableSemesterIds = new Set(semesters
+    .filter((semester) => semester.startDate <= date && date <= semester.endDate)
+    .map((semester) => semester.id));
+  if (applicableSemesterIds.size === 0) return [];
   const browserDay = parseISODate(date).getDay();
   const dayOfWeek = browserDay === 0 ? 7 : browserDay;
-  return timetable.filter((entry) => entry.dayOfWeek === dayOfWeek);
+  return timetable.filter((entry) => entry.dayOfWeek === dayOfWeek && applicableSemesterIds.has(entry.semesterId));
 }
 
 function getTimetableConflicts(items) {
@@ -1965,11 +1987,11 @@ function openCreateModal() {
 }
 
 function openTimetableModalDialog() {
-  if (!semester.name || !semester.startDate || !semester.endDate) {
-    alert("관리자가 학기 적용 기간을 먼저 설정해야 합니다.");
+  if (semesters.length === 0) {
+    alert("관리자가 학기를 먼저 등록해야 합니다.");
     return;
   }
-  timetableSemesterSummary.textContent = `${semester.name} · ${formatDate(parseISODate(semester.startDate))} - ${formatDate(parseISODate(semester.endDate))}`;
+  renderTimetableSemesterOptions();
   resetTimetableEntryForm();
   renderTimetableList();
   timetableModal.classList.remove("hidden");
@@ -1987,8 +2009,32 @@ function resetTimetableEntryForm() {
   timetableDayOfWeek.value = "1";
   timetableStart.value = "09:00";
   timetableEnd.value = "10:00";
+  timetableSemester.value = getDefaultTimetableSemesterId();
   timetableSubmit.textContent = "수업 추가";
   cancelTimetableEdit.classList.add("hidden");
+  updateTimetableSemesterSummary();
+}
+
+function renderTimetableSemesterOptions() {
+  timetableSemester.innerHTML = semesters.map((semester) => (
+    `<option value="${escapeHtml(semester.id)}">${escapeHtml(semester.name)} (${escapeHtml(semester.startDate)} ~ ${escapeHtml(semester.endDate)})</option>`
+  )).join("");
+}
+
+function getDefaultTimetableSemesterId() {
+  const visibleDate = toISODate(currentWeekStart);
+  const today = toISODate(new Date());
+  return semesters.find((semester) => semester.startDate <= visibleDate && visibleDate <= semester.endDate)?.id
+    || semesters.find((semester) => semester.startDate <= today && today <= semester.endDate)?.id
+    || semesters[0]?.id
+    || "";
+}
+
+function updateTimetableSemesterSummary() {
+  const semester = semesters.find((item) => item.id === timetableSemester.value);
+  timetableSemesterSummary.textContent = semester
+    ? `${semester.name} · ${formatDate(parseISODate(semester.startDate))} - ${formatDate(parseISODate(semester.endDate))}`
+    : "적용할 학기를 선택해주세요.";
 }
 
 function renderTimetableList() {
@@ -2002,7 +2048,7 @@ function renderTimetableList() {
       <article class="timetable-item">
         <div>
           <strong>${escapeHtml(entry.title)}</strong>
-          <span>${dayNames[entry.dayOfWeek - 1]}요일 · ${escapeHtml(entry.start)}-${escapeHtml(entry.end)}</span>
+          <span>${escapeHtml(getSemesterName(entry.semesterId))} · ${dayNames[entry.dayOfWeek - 1]}요일 · ${escapeHtml(entry.start)}-${escapeHtml(entry.end)}</span>
         </div>
         <div class="item-actions">
           <button type="button" class="action-button edit-button" data-edit-class="${escapeHtml(entry.id)}">수정</button>
@@ -2013,7 +2059,19 @@ function renderTimetableList() {
 }
 
 function compareTimetableEntries(left, right) {
-  return left.dayOfWeek - right.dayOfWeek || left.start.localeCompare(right.start) || left.title.localeCompare(right.title, "ko-KR");
+  return getSemesterOrder(left.semesterId) - getSemesterOrder(right.semesterId)
+    || left.dayOfWeek - right.dayOfWeek
+    || left.start.localeCompare(right.start)
+    || left.title.localeCompare(right.title, "ko-KR");
+}
+
+function getSemesterName(semesterId) {
+  return semesters.find((semester) => semester.id === semesterId)?.name || "학기 미지정";
+}
+
+function getSemesterOrder(semesterId) {
+  const index = semesters.findIndex((semester) => semester.id === semesterId);
+  return index === -1 ? semesters.length : index;
 }
 
 function closeModal() {

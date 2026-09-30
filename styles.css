@@ -714,6 +714,46 @@ button:disabled {
   align-self: start;
 }
 
+.semester-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.semester-form-actions .secondary {
+  height: 42px;
+}
+
+.semester-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.semester-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ddd6fe;
+  border-left: 4px solid #7c3aed;
+  border-radius: 7px;
+  background: #faf8ff;
+}
+
+.semester-item strong,
+.semester-item span {
+  display: block;
+}
+
+.semester-item span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .user-list-card {
   grid-column: 1 / -1;
 }
@@ -1483,7 +1523,7 @@ button:disabled {
 }
 
 .timetable-modal-card {
-  width: min(820px, 100%);
+  width: min(980px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
 }
@@ -1508,7 +1548,7 @@ button:disabled {
 
 .timetable-entry-form {
   display: grid;
-  grid-template-columns: 110px minmax(180px, 1fr) 120px 120px auto;
+  grid-template-columns: minmax(190px, 1.2fr) 100px minmax(160px, 1fr) 110px 110px auto;
   gap: 9px;
   align-items: end;
 }
@@ -1623,6 +1663,7 @@ button:disabled {
   }
 
   .timetable-title-field,
+  .timetable-semester-field,
   .timetable-form-actions {
     grid-column: 1 / -1;
   }

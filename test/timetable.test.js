@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   normalizeCalendarData,
+  normalizeSemesterCollection,
   normalizeSemesterSetting,
   normalizeTimetableEntry
 } = require("../server");
@@ -12,12 +13,14 @@ test("normalizes a valid timetable entry", () => {
     dayOfWeek: "3",
     end: "11:45",
     id: "class-1",
+    semesterId: "semester-1",
     start: "10:15",
     title: " 인공지능개론 "
   }), {
     dayOfWeek: 3,
     end: "11:45",
     id: "class-1",
+    semesterId: "semester-1",
     start: "10:15",
     title: "인공지능개론"
   });
@@ -48,4 +51,20 @@ test("normalizes semester settings and rejects malformed dates", () => {
   });
 
   assert.equal(normalizeSemesterSetting({ startDate: "2026-02-30" }).startDate, "");
+});
+
+test("keeps multiple semesters and migrates a legacy semester", () => {
+  const semesters = normalizeSemesterCollection([
+    { id: "spring", name: "2026학년도 1학기", startDate: "2026-03-02", endDate: "2026-06-19" },
+    { id: "fall", name: "2026학년도 2학기", startDate: "2026-09-01", endDate: "2026-12-18" }
+  ]);
+  assert.deepEqual(semesters.map((semester) => semester.id), ["fall", "spring"]);
+
+  const migrated = normalizeSemesterCollection(undefined, {
+    name: "2025학년도 2학기",
+    startDate: "2025-09-01",
+    endDate: "2025-12-19"
+  });
+  assert.equal(migrated.length, 1);
+  assert.match(migrated[0].id, /^semester-/);
 });

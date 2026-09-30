@@ -23,8 +23,13 @@ const semesterFormMessage = document.querySelector("#semesterFormMessage");
 const semesterName = document.querySelector("#semesterName");
 const semesterStartDate = document.querySelector("#semesterStartDate");
 const semesterEndDate = document.querySelector("#semesterEndDate");
+const semesterId = document.querySelector("#semesterId");
+const semesterSubmit = document.querySelector("#semesterSubmit");
+const cancelSemesterEdit = document.querySelector("#cancelSemesterEdit");
+const semesterList = document.querySelector("#semesterList");
 
 let users = [];
+let semesters = [];
 
 initializeAdmin();
 
@@ -42,14 +47,15 @@ async function initializeAdmin() {
   const session = await response.json();
   accountName.textContent = session.name || session.username;
   accountGreeting.hidden = false;
-  await Promise.all([loadUsers(), loadSemester()]);
+  await Promise.all([loadUsers(), loadSemesters()]);
 }
 
 semesterForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   setSemesterMessage("");
 
-  const response = await fetch("/api/semester", {
+  const editingId = semesterId.value;
+  const response = await fetch(editingId ? `/api/semesters/${encodeURIComponent(editingId)}` : "/api/semesters", {
     body: JSON.stringify({
       endDate: semesterEndDate.value,
       name: semesterName.value.trim(),
@@ -58,16 +64,33 @@ semesterForm.addEventListener("submit", async (event) => {
     headers: {
       "Content-Type": "application/json"
     },
-    method: "PUT"
+    method: editingId ? "PUT" : "POST"
   });
   const result = await response.json();
   if (!response.ok) {
-    setSemesterMessage(result.error || "학기 설정을 저장할 수 없습니다.", true);
+    setSemesterMessage(result.error || "학기를 저장할 수 없습니다.", true);
     return;
   }
 
-  fillSemesterForm(result.semester);
-  setSemesterMessage("학기 적용 기간을 저장했습니다.");
+  resetSemesterForm();
+  setSemesterMessage(editingId ? "학기를 수정했습니다." : "학기를 추가했습니다.");
+  await loadSemesters();
+});
+
+cancelSemesterEdit.addEventListener("click", resetSemesterForm);
+
+semesterList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-edit-semester]");
+  if (!button) return;
+  const semester = semesters.find((item) => item.id === button.dataset.editSemester);
+  if (!semester) return;
+  semesterId.value = semester.id;
+  semesterName.value = semester.name;
+  semesterStartDate.value = semester.startDate;
+  semesterEndDate.value = semester.endDate;
+  semesterSubmit.textContent = "학기 수정";
+  cancelSemesterEdit.classList.remove("hidden");
+  semesterName.focus();
 });
 
 userForm.addEventListener("submit", async (event) => {
@@ -156,20 +179,38 @@ async function loadUsers() {
   renderUsers(users);
 }
 
-async function loadSemester() {
-  const response = await fetch("/api/semester");
+async function loadSemesters() {
+  const response = await fetch("/api/semesters");
   if (!response.ok) {
-    setSemesterMessage("학기 설정을 불러올 수 없습니다.", true);
+    setSemesterMessage("학기 목록을 불러올 수 없습니다.", true);
     return;
   }
   const result = await response.json();
-  fillSemesterForm(result.semester || {});
+  semesters = result.semesters || [];
+  renderSemesters();
 }
 
-function fillSemesterForm(semester) {
-  semesterName.value = semester.name || "";
-  semesterStartDate.value = semester.startDate || "";
-  semesterEndDate.value = semester.endDate || "";
+function resetSemesterForm() {
+  semesterForm.reset();
+  semesterId.value = "";
+  semesterSubmit.textContent = "학기 추가";
+  cancelSemesterEdit.classList.add("hidden");
+}
+
+function renderSemesters() {
+  if (semesters.length === 0) {
+    semesterList.innerHTML = '<div class="empty-state compact">등록된 학기가 없습니다.</div>';
+    return;
+  }
+  semesterList.innerHTML = semesters.map((semester) => `
+    <article class="semester-item">
+      <div>
+        <strong>${escapeHtml(semester.name)}</strong>
+        <span>${formatDate(semester.startDate)} - ${formatDate(semester.endDate)}</span>
+      </div>
+      <button type="button" class="action-button edit-button" data-edit-semester="${escapeHtml(semester.id)}">수정</button>
+    </article>
+  `).join("");
 }
 
 function setSemesterMessage(message, isError = false) {
@@ -240,6 +281,10 @@ function formatDateTime(value, fallback = "-") {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(new Date(value));
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
 }
 
 function escapeHtml(value) {

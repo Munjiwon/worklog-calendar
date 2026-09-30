@@ -137,18 +137,24 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    if (request.method === "GET" && pathname === "/api/semester") {
+    if (request.method === "GET" && pathname === "/api/semesters") {
       if (!session) {
         sendJson(response, 401, { error: "unauthorized" });
         return;
       }
-      sendJson(response, 200, { semester: await loadSemesterSetting() });
+      sendJson(response, 200, { semesters: await loadSemesterSettings() });
       return;
     }
 
-    if (request.method === "PUT" && pathname === "/api/semester") {
+    if (request.method === "POST" && pathname === "/api/semesters") {
       if (!requireAdmin(response, session)) return;
-      await handleSaveSemester(request, response);
+      await handleCreateSemester(request, response);
+      return;
+    }
+
+    if (request.method === "PUT" && pathname.startsWith("/api/semesters/")) {
+      if (!requireAdmin(response, session)) return;
+      await handleUpdateSemester(request, response, decodeURIComponent(pathname.slice("/api/semesters/".length)));
       return;
     }
 
@@ -419,15 +425,36 @@ async function handleSaveCalendarData(request, response, session) {
   sendJson(response, 200, { ok: true });
 }
 
-async function handleSaveSemester(request, response) {
+async function handleCreateSemester(request, response) {
   const body = await readJsonBody(request);
   const result = validateSemesterSetting(body);
   if (result.error) {
     sendJson(response, 400, { error: result.error });
     return;
   }
-  await saveSemesterSetting(result.semester);
-  sendJson(response, 200, { semester: result.semester });
+  const semesters = await loadSemesterSettings();
+  const semester = { ...result.semester, id: crypto.randomUUID() };
+  semesters.push(semester);
+  await saveSemesterSettings(semesters);
+  sendJson(response, 201, { semester });
+}
+
+async function handleUpdateSemester(request, response, semesterId) {
+  const body = await readJsonBody(request);
+  const result = validateSemesterSetting(body);
+  if (result.error) {
+    sendJson(response, 400, { error: result.error });
+    return;
+  }
+  const semesters = await loadSemesterSettings();
+  const index = semesters.findIndex((semester) => semester.id === semesterId);
+  if (index === -1) {
+    sendJson(response, 404, { error: "학기를 찾을 수 없습니다." });
+    return;
+  }
+  semesters[index] = { ...result.semester, id: semesterId };
+  await saveSemesterSettings(semesters);
+  sendJson(response, 200, { semester: semesters[index] });
 }
 
 async function handleParseWorklogPdf(request, response) {
@@ -952,6 +979,7 @@ function normalizeTimetableEntry(entry) {
     dayOfWeek,
     end,
     id: String(entry.id || crypto.randomUUID()),
+    semesterId: String(entry.semesterId || ""),
     start,
     title
   };
@@ -986,30 +1014,31 @@ function normalizePlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-async function loadSemesterSetting() {
+async function loadSemesterSettings() {
   if (dbPool) {
-    const result = await dbPool.query("SELECT value FROM app_settings WHERE key = 'semester' LIMIT 1");
-    return normalizeSemesterSetting(result.rows[0]?.value || {});
+    const result = await dbPool.query("SELECT key, value FROM app_settings WHERE key IN ('semesters', 'semester')");
+    const settings = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+    return normalizeSemesterCollection(settings.semesters, settings.semester);
   }
 
   try {
     const data = JSON.parse(await fs.readFile(APP_SETTINGS_FILE, "utf8"));
-    return normalizeSemesterSetting(data.semester || {});
+    return normalizeSemesterCollection(data.semesters, data.semester);
   } catch (error) {
-    if (error.code === "ENOENT") return normalizeSemesterSetting({});
+    if (error.code === "ENOENT") return [];
     throw error;
   }
 }
 
-async function saveSemesterSetting(semester) {
-  const normalized = normalizeSemesterSetting(semester);
+async function saveSemesterSettings(semesters) {
+  const normalized = normalizeSemesterCollection(semesters);
   if (dbPool) {
     await dbPool.query(
       `INSERT INTO app_settings (key, value, updated_at)
-       VALUES ('semester', $1, NOW())
+       VALUES ('semesters', $1::jsonb, NOW())
        ON CONFLICT (key)
        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-      [normalized]
+      [JSON.stringify(normalized)]
     );
     return;
   }
@@ -1021,8 +1050,39 @@ async function saveSemesterSetting(semester) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  settings.semester = normalized;
+  settings.semesters = normalized;
   await fs.writeFile(APP_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+function normalizeSemesterCollection(value, legacyValue = {}) {
+  const source = Array.isArray(value) ? value : [];
+  const normalized = source
+    .map((semester) => {
+      const fields = normalizeSemesterSetting(semester);
+      if (!fields.name || !fields.startDate || !fields.endDate) return null;
+      return {
+        ...fields,
+        id: String(semester.id || makeLegacySemesterId(fields))
+      };
+    })
+    .filter(Boolean);
+  if (normalized.length > 0) return normalized.sort(compareSemesterSettings);
+
+  const legacy = normalizeSemesterSetting(legacyValue);
+  if (!legacy.name || !legacy.startDate || !legacy.endDate) return [];
+  return [{ ...legacy, id: makeLegacySemesterId(legacy) }];
+}
+
+function makeLegacySemesterId(semester) {
+  const digest = crypto.createHash("sha256")
+    .update(`${semester.name}|${semester.startDate}|${semester.endDate}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `semester-${digest}`;
+}
+
+function compareSemesterSettings(left, right) {
+  return right.startDate.localeCompare(left.startDate) || left.name.localeCompare(right.name, "ko-KR");
 }
 
 function normalizeSemesterSetting(value) {
@@ -1036,8 +1096,6 @@ function normalizeSemesterSetting(value) {
 
 function validateSemesterSetting(value) {
   const semester = normalizeSemesterSetting(value);
-  const provided = Boolean(semester.name || semester.startDate || semester.endDate);
-  if (!provided) return { semester };
   if (!semester.name || !semester.startDate || !semester.endDate) {
     return { error: "학기명과 적용 시작일, 종료일을 모두 입력해주세요." };
   }
@@ -1427,6 +1485,7 @@ module.exports = {
   extractWorklogEntriesFromPdf,
   normalizeCalendarData,
   normalizePublicHolidays,
+  normalizeSemesterCollection,
   normalizeSemesterSetting,
   normalizeTimetableEntry,
   parseWorklogEntries,
