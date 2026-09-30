@@ -67,4 +67,10 @@ test("keeps multiple semesters and migrates a legacy semester", () => {
   });
   assert.equal(migrated.length, 1);
   assert.match(migrated[0].id, /^semester-/);
+
+  assert.deepEqual(normalizeSemesterCollection([], {
+    name: "삭제된 기존 학기",
+    startDate: "2024-03-01",
+    endDate: "2024-06-20"
+  }), []);
 });

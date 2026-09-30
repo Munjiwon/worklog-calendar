@@ -158,6 +158,12 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "DELETE" && pathname.startsWith("/api/semesters/")) {
+      if (!requireAdmin(response, session)) return;
+      await handleDeleteSemester(response, decodeURIComponent(pathname.slice("/api/semesters/".length)));
+      return;
+    }
+
     if (request.method === "GET" && pathname === "/api/users") {
       if (!requireAdmin(response, session)) return;
       const users = await loadUsers();
@@ -455,6 +461,23 @@ async function handleUpdateSemester(request, response, semesterId) {
   semesters[index] = { ...result.semester, id: semesterId };
   await saveSemesterSettings(semesters);
   sendJson(response, 200, { semester: semesters[index] });
+}
+
+async function handleDeleteSemester(response, semesterId) {
+  const semesters = await loadSemesterSettings();
+  const semester = semesters.find((item) => item.id === semesterId);
+  if (!semester) {
+    sendJson(response, 404, { error: "학기를 찾을 수 없습니다." });
+    return;
+  }
+
+  const remaining = semesters.filter((item) => item.id !== semesterId);
+  const removeUnassigned = semesterId === makeLegacySemesterId(semester);
+  const removedTimetableEntries = await deleteSemesterAndTimetables(remaining, semesterId, removeUnassigned);
+  sendJson(response, 200, {
+    deletedSemester: semester,
+    removedTimetableEntries
+  });
 }
 
 async function handleParseWorklogPdf(request, response) {
@@ -1033,13 +1056,7 @@ async function loadSemesterSettings() {
 async function saveSemesterSettings(semesters) {
   const normalized = normalizeSemesterCollection(semesters);
   if (dbPool) {
-    await dbPool.query(
-      `INSERT INTO app_settings (key, value, updated_at)
-       VALUES ('semesters', $1::jsonb, NOW())
-       ON CONFLICT (key)
-       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-      [JSON.stringify(normalized)]
-    );
+    await saveSemesterSettingsToDatabase(dbPool, normalized);
     return;
   }
 
@@ -1054,8 +1071,69 @@ async function saveSemesterSettings(semesters) {
   await fs.writeFile(APP_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
+async function saveSemesterSettingsToDatabase(database, semesters) {
+  await database.query(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES ('semesters', $1::jsonb, NOW())
+     ON CONFLICT (key)
+     DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [JSON.stringify(semesters)]
+  );
+}
+
+async function deleteSemesterAndTimetables(remainingSemesters, semesterId, removeUnassigned) {
+  const normalizedSemesters = normalizeSemesterCollection(remainingSemesters);
+  if (dbPool) {
+    const client = await dbPool.connect();
+    let removedCount = 0;
+    try {
+      await client.query("BEGIN");
+      await saveSemesterSettingsToDatabase(client, normalizedSemesters);
+      const result = await client.query("SELECT username, data FROM calendar_data FOR UPDATE");
+      for (const row of result.rows) {
+        const data = normalizeCalendarData(row.data);
+        const filtered = data.timetable.filter((entry) => (
+          entry.semesterId !== semesterId
+          && !(removeUnassigned && !entry.semesterId)
+        ));
+        if (filtered.length === data.timetable.length) continue;
+        removedCount += data.timetable.length - filtered.length;
+        data.timetable = filtered;
+        await client.query(
+          "UPDATE calendar_data SET data = $1, updated_at = NOW() WHERE username = $2",
+          [data, row.username]
+        );
+      }
+      await client.query("COMMIT");
+      return removedCount;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  await saveSemesterSettings(normalizedSemesters);
+  const calendarData = await loadCalendarDataFile();
+  let removedCount = 0;
+  Object.entries(calendarData).forEach(([username, rawData]) => {
+    const data = normalizeCalendarData(rawData);
+    const filtered = data.timetable.filter((entry) => (
+      entry.semesterId !== semesterId
+      && !(removeUnassigned && !entry.semesterId)
+    ));
+    removedCount += data.timetable.length - filtered.length;
+    data.timetable = filtered;
+    calendarData[username] = data;
+  });
+  await saveCalendarDataFile(calendarData);
+  return removedCount;
+}
+
 function normalizeSemesterCollection(value, legacyValue = {}) {
-  const source = Array.isArray(value) ? value : [];
+  const hasCollection = Array.isArray(value);
+  const source = hasCollection ? value : [];
   const normalized = source
     .map((semester) => {
       const fields = normalizeSemesterSetting(semester);
@@ -1066,7 +1144,7 @@ function normalizeSemesterCollection(value, legacyValue = {}) {
       };
     })
     .filter(Boolean);
-  if (normalized.length > 0) return normalized.sort(compareSemesterSettings);
+  if (hasCollection) return normalized.sort(compareSemesterSettings);
 
   const legacy = normalizeSemesterSetting(legacyValue);
   if (!legacy.name || !legacy.startDate || !legacy.endDate) return [];

@@ -730,6 +730,23 @@ button:disabled {
   margin-top: 2px;
 }
 
+.semester-list-toggle {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--line);
+}
+
+.semester-list-toggle::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 7px;
+  transition: transform 0.16s ease;
+}
+
+.semester-list-toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
 .semester-item {
   display: flex;
   align-items: center;

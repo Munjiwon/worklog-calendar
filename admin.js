@@ -27,6 +27,7 @@ const semesterId = document.querySelector("#semesterId");
 const semesterSubmit = document.querySelector("#semesterSubmit");
 const cancelSemesterEdit = document.querySelector("#cancelSemesterEdit");
 const semesterList = document.querySelector("#semesterList");
+const semesterListToggle = document.querySelector("#semesterListToggle");
 
 let users = [];
 let semesters = [];
@@ -75,11 +76,34 @@ semesterForm.addEventListener("submit", async (event) => {
   resetSemesterForm();
   setSemesterMessage(editingId ? "학기를 수정했습니다." : "학기를 추가했습니다.");
   await loadSemesters();
+  setSemesterListExpanded(true);
 });
 
 cancelSemesterEdit.addEventListener("click", resetSemesterForm);
 
-semesterList.addEventListener("click", (event) => {
+semesterListToggle.addEventListener("click", () => {
+  setSemesterListExpanded(semesterListToggle.getAttribute("aria-expanded") !== "true");
+});
+
+semesterList.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest("[data-delete-semester]");
+  if (deleteButton) {
+    const semester = semesters.find((item) => item.id === deleteButton.dataset.deleteSemester);
+    if (!semester) return;
+    if (!confirm(`${semester.name}을(를) 삭제할까요?\n\n이 학기에 연결된 모든 사용자의 수업 시간표도 함께 삭제됩니다.`)) return;
+    const response = await fetch(`/api/semesters/${encodeURIComponent(semester.id)}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok) {
+      setSemesterMessage(result.error || "학기를 삭제할 수 없습니다.", true);
+      return;
+    }
+    if (semesterId.value === semester.id) resetSemesterForm();
+    await loadSemesters();
+    setSemesterListExpanded(true);
+    setSemesterMessage(`${semester.name}을(를) 삭제했습니다. 연결된 수업 ${result.removedTimetableEntries || 0}개도 정리했습니다.`);
+    return;
+  }
+
   const button = event.target.closest("[data-edit-semester]");
   if (!button) return;
   const semester = semesters.find((item) => item.id === button.dataset.editSemester);
@@ -198,6 +222,7 @@ function resetSemesterForm() {
 }
 
 function renderSemesters() {
+  updateSemesterListToggle();
   if (semesters.length === 0) {
     semesterList.innerHTML = '<div class="empty-state compact">등록된 학기가 없습니다.</div>';
     return;
@@ -208,9 +233,23 @@ function renderSemesters() {
         <strong>${escapeHtml(semester.name)}</strong>
         <span>${formatDate(semester.startDate)} - ${formatDate(semester.endDate)}</span>
       </div>
-      <button type="button" class="action-button edit-button" data-edit-semester="${escapeHtml(semester.id)}">수정</button>
+      <div class="item-actions">
+        <button type="button" class="action-button edit-button" data-edit-semester="${escapeHtml(semester.id)}">수정</button>
+        <button type="button" class="action-button delete-button" data-delete-semester="${escapeHtml(semester.id)}">삭제</button>
+      </div>
     </article>
   `).join("");
+}
+
+function setSemesterListExpanded(expanded) {
+  semesterListToggle.setAttribute("aria-expanded", String(expanded));
+  semesterList.classList.toggle("hidden", !expanded);
+  updateSemesterListToggle();
+}
+
+function updateSemesterListToggle() {
+  const expanded = semesterListToggle.getAttribute("aria-expanded") === "true";
+  semesterListToggle.textContent = `학기 목록 ${semesters.length}개 ${expanded ? "접기" : "펼치기"}`;
 }
 
 function setSemesterMessage(message, isError = false) {
