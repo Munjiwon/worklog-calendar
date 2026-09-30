@@ -138,10 +138,18 @@ let selectedShiftId = null;
 let pdfImportEntries = [];
 let tagCopyPeriod = "week";
 let calendarDataSaveTimer = null;
+let lastActivityPingAt = 0;
 const collapsedTags = new Set();
 let hiddenCalendarTags = new Set();
 
 initializeApp();
+
+window.addEventListener("focus", recordCurrentAccess);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") recordCurrentAccess();
+});
+document.addEventListener("pointerdown", recordCurrentAccess, { passive: true });
+document.addEventListener("keydown", recordCurrentAccess, { passive: true });
 
 createShift.addEventListener("click", () => {
   openCreateModal();
@@ -873,6 +881,7 @@ async function initializeApp() {
     window.location.href = "/login";
     return;
   }
+  lastActivityPingAt = Date.now();
 
   storageKeys = makeStorageKeys(currentSession.username);
   hiddenCalendarTags = loadHiddenCalendarTags();
@@ -895,6 +904,19 @@ async function initializeApp() {
   saveTagColors();
   render();
   renderTagControls();
+}
+
+function recordCurrentAccess() {
+  if (!currentSession) return;
+  const now = Date.now();
+  if (now - lastActivityPingAt < 60_000) return;
+  lastActivityPingAt = now;
+  void fetch("/api/activity", {
+    method: "POST",
+    keepalive: true
+  }).catch(() => {
+    lastActivityPingAt = 0;
+  });
 }
 
 async function loadCurrentSession() {

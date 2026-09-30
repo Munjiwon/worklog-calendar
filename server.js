@@ -21,6 +21,7 @@ const PASSWORD = process.env.WORKLOG_PASSWORD || "1q2w3e4r";
 const SESSION_SECRET = process.env.SESSION_SECRET || "change-this-session-secret";
 const SESSION_COOKIE = "worklog_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const ACCESS_TOUCH_INTERVAL_MS = 60 * 1000;
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
@@ -44,6 +45,7 @@ if (!process.env.SESSION_SECRET) {
 }
 
 let dbPool = null;
+const lastAccessWrites = new Map();
 
 const server = http.createServer(async (request, response) => {
   try {
@@ -54,6 +56,10 @@ const server = http.createServer(async (request, response) => {
     if (pathname === "/health") {
       sendText(response, 200, "ok");
       return;
+    }
+
+    if (session && shouldRecordUserAccess(request.method, pathname)) {
+      await touchUserAccessSafely(session.sub);
     }
 
     if (request.method === "GET" && (pathname === "/login" || pathname === "/login.html")) {
@@ -106,8 +112,19 @@ const server = http.createServer(async (request, response) => {
       sendJson(response, 200, {
         name: user?.name || session.sub,
         role: session.role,
-        username: session.sub
+        username: session.sub,
+        lastAccessAt: user?.lastAccessAt || null
       });
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/activity") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      response.writeHead(204, { "Cache-Control": "no-store" });
+      response.end();
       return;
     }
 
@@ -226,9 +243,11 @@ async function handleLogin(request, response) {
   const user = await findUser(username);
 
   if (user && verifyPassword(password, user.passwordHash)) {
+    const accessedAt = new Date().toISOString();
     const loggedInUser = {
       ...user,
-      lastLoginAt: new Date().toISOString()
+      lastAccessAt: accessedAt,
+      lastLoginAt: accessedAt
     };
     await updateUser(loggedInUser);
     setSessionCookie(response, loggedInUser);
@@ -263,6 +282,7 @@ async function handleRegister(request, response) {
   const user = {
     createdAt: new Date().toISOString(),
     email: userData.user.email,
+    lastAccessAt: new Date().toISOString(),
     lastLoginAt: new Date().toISOString(),
     name: userData.user.name,
     passwordHash: hashPassword(userData.user.password),
@@ -334,6 +354,7 @@ async function handleCreateUser(request, response) {
   const user = {
     createdAt: new Date().toISOString(),
     email: userData.user.email,
+    lastAccessAt: null,
     lastLoginAt: null,
     name: userData.user.name,
     passwordHash: hashPassword(userData.user.password),
@@ -641,12 +662,15 @@ async function ensureDatabaseUserStore() {
         email TEXT NOT NULL DEFAULT '',
         role TEXT NOT NULL CHECK (role IN ('user', 'admin')),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        last_login_at TIMESTAMPTZ
+        last_login_at TIMESTAMPTZ,
+        last_access_at TIMESTAMPTZ
       )
     `);
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''");
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
     await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ");
+    await dbPool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_access_at TIMESTAMPTZ");
+    await dbPool.query("UPDATE users SET last_access_at = last_login_at WHERE last_access_at IS NULL AND last_login_at IS NOT NULL");
     await dbPool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email)) WHERE email <> ''");
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS calendar_data (
@@ -696,6 +720,7 @@ async function ensureFileUserStore() {
     const initialAdmin = {
       createdAt: new Date().toISOString(),
       email: "",
+      lastAccessAt: null,
       lastLoginAt: null,
       name: "관리자",
       passwordHash: hashPassword(PASSWORD),
@@ -707,28 +732,38 @@ async function ensureFileUserStore() {
   }
 
   const users = await loadUsers();
+  let usersChanged = false;
+  users.forEach((user) => {
+    if (user.lastAccessAt === undefined) {
+      user.lastAccessAt = user.lastLoginAt || null;
+      usersChanged = true;
+    }
+  });
   if (!users.some((user) => user.role === "admin")) {
     users.push({
       createdAt: new Date().toISOString(),
       email: "",
+      lastAccessAt: null,
       lastLoginAt: null,
       name: "관리자",
       passwordHash: hashPassword(PASSWORD),
       role: "admin",
       username: USERNAME
     });
-    await saveUsers(users);
+    usersChanged = true;
   }
+  if (usersChanged) await saveUsers(users);
 }
 
 async function loadUsers() {
   if (dbPool) {
     const result = await dbPool.query(
-      "SELECT username, password_hash, name, email, role, created_at, last_login_at FROM users ORDER BY created_at ASC, username ASC"
+      "SELECT username, password_hash, name, email, role, created_at, last_login_at, last_access_at FROM users ORDER BY created_at ASC, username ASC"
     );
     return result.rows.map((row) => ({
       createdAt: row.created_at.toISOString(),
       email: row.email || "",
+      lastAccessAt: row.last_access_at?.toISOString() || null,
       lastLoginAt: row.last_login_at?.toISOString() || null,
       name: row.name || "",
       passwordHash: row.password_hash,
@@ -760,7 +795,7 @@ async function findUser(username) {
   const normalized = normalizeUsername(username);
   if (dbPool) {
     const result = await dbPool.query(
-      "SELECT username, password_hash, name, email, role, created_at, last_login_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
+      "SELECT username, password_hash, name, email, role, created_at, last_login_at, last_access_at FROM users WHERE lower(username) = lower($1) LIMIT 1",
       [normalized]
     );
     const row = result.rows[0];
@@ -768,6 +803,7 @@ async function findUser(username) {
     return {
       createdAt: row.created_at.toISOString(),
       email: row.email || "",
+      lastAccessAt: row.last_access_at?.toISOString() || null,
       lastLoginAt: row.last_login_at?.toISOString() || null,
       name: row.name || "",
       passwordHash: row.password_hash,
@@ -783,8 +819,8 @@ async function findUser(username) {
 async function createUser(user) {
   if (dbPool) {
     await dbPool.query(
-      "INSERT INTO users (username, password_hash, name, email, role, created_at, last_login_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-      [user.username, user.passwordHash, user.name, user.email, user.role, user.createdAt, user.lastLoginAt || null]
+      "INSERT INTO users (username, password_hash, name, email, role, created_at, last_login_at, last_access_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+      [user.username, user.passwordHash, user.name, user.email, user.role, user.createdAt, user.lastLoginAt || null, user.lastAccessAt || null]
     );
     return;
   }
@@ -797,8 +833,8 @@ async function createUser(user) {
 async function updateUser(user) {
   if (dbPool) {
     await dbPool.query(
-      "UPDATE users SET password_hash = $1, name = $2, email = $3, role = $4, last_login_at = $5 WHERE lower(username) = lower($6)",
-      [user.passwordHash, user.name, user.email, user.role, user.lastLoginAt || null, user.username]
+      "UPDATE users SET password_hash = $1, name = $2, email = $3, role = $4, last_login_at = $5, last_access_at = $6 WHERE lower(username) = lower($7)",
+      [user.passwordHash, user.name, user.email, user.role, user.lastLoginAt || null, user.lastAccessAt || null, user.username]
     );
     return;
   }
@@ -819,6 +855,7 @@ function publicUser(user) {
   return {
     createdAt: user.createdAt,
     email: user.email || "",
+    lastAccessAt: user.lastAccessAt || null,
     lastLoginAt: user.lastLoginAt || null,
     name: user.name || "",
     role: user.role,
@@ -1292,6 +1329,45 @@ function getUserInputErrorMessage(error) {
   return messages[error] || "계정을 만들 수 없습니다.";
 }
 
+function shouldRecordUserAccess(method, pathname) {
+  if (pathname.startsWith("/api/")) return true;
+  if (method !== "GET") return pathname === "/logout";
+  return pathname === "/"
+    || pathname === "/admin"
+    || pathname === "/admin.html"
+    || pathname === "/login"
+    || pathname === "/login.html";
+}
+
+async function touchUserAccessSafely(username) {
+  const key = getStorageUsername(username);
+  const now = Date.now();
+  if (now - Number(lastAccessWrites.get(key) || 0) < ACCESS_TOUCH_INTERVAL_MS) return;
+  lastAccessWrites.set(key, now);
+  try {
+    await touchUserAccess(username, new Date(now).toISOString());
+  } catch (error) {
+    lastAccessWrites.delete(key);
+    console.error(`Failed to update last access for ${key}:`, error.message);
+  }
+}
+
+async function touchUserAccess(username, accessedAt) {
+  if (dbPool) {
+    await dbPool.query(
+      "UPDATE users SET last_access_at = $1 WHERE lower(username) = lower($2)",
+      [accessedAt, username]
+    );
+    return;
+  }
+
+  const users = await loadUsers();
+  const index = users.findIndex((user) => user.username.toLowerCase() === String(username).toLowerCase());
+  if (index === -1) return;
+  users[index] = { ...users[index], lastAccessAt: accessedAt };
+  await saveUsers(users);
+}
+
 function requireAdmin(response, session) {
   if (!session) {
     sendJson(response, 401, { error: "unauthorized" });
@@ -1353,5 +1429,6 @@ module.exports = {
   normalizePublicHolidays,
   normalizeSemesterSetting,
   normalizeTimetableEntry,
-  parseWorklogEntries
+  parseWorklogEntries,
+  shouldRecordUserAccess
 };

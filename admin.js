@@ -193,7 +193,7 @@ function renderUsers(users) {
       <div class="user-item-actions">
         <div class="user-item-times">
           <span>가입 ${formatDateTime(user.createdAt)}</span>
-          <span>마지막 로그인 ${formatDateTime(user.lastLoginAt, "기록 없음")}</span>
+          <span>마지막 접속 ${formatDateTime(user.lastAccessAt, "기록 없음")}</span>
         </div>
         <button type="button" class="action-button edit-button" data-edit-user="${escapeHtml(user.username)}">수정</button>
       </div>
