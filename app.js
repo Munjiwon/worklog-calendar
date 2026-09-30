@@ -2203,7 +2203,7 @@ function renderTimetableCourseCatalog() {
 function updateCatalogSelectionButton() {
   const availableIds = new Set(timetableCourseCatalog.map((course) => course.id));
   const count = [...selectedCatalogCourseIds].filter((courseId) => availableIds.has(courseId)).length;
-  addSelectedCourses.textContent = count > 0 ? `선택한 수업 추가 (${count})` : "선택한 수업 추가";
+  addSelectedCourses.textContent = `선택한 수업 추가 (${count})`;
   addSelectedCourses.disabled = count === 0;
 }
 
