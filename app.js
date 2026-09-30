@@ -113,6 +113,10 @@ const timetableEnd = document.querySelector("#timetableEnd");
 const timetableList = document.querySelector("#timetableList");
 const timetableSubmit = document.querySelector("#timetableSubmit");
 const cancelTimetableEdit = document.querySelector("#cancelTimetableEdit");
+const timetableCourseSearch = document.querySelector("#timetableCourseSearch");
+const timetableCatalogMessage = document.querySelector("#timetableCatalogMessage");
+const timetableCatalogList = document.querySelector("#timetableCatalogList");
+const addSelectedCourses = document.querySelector("#addSelectedCourses");
 
 let currentWeekStart = startOfWeek(new Date());
 let currentMonthStart = startOfMonth(currentWeekStart);
@@ -130,6 +134,7 @@ let tagTargetMinutes = {};
 let tagMealSettings = {};
 let timetable = [];
 let semesters = [];
+let timetableCourseCatalog = [];
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
@@ -207,13 +212,65 @@ timetableList.addEventListener("click", (event) => {
   }
   const button = event.target.closest("[data-delete-class]");
   if (!button) return;
-  timetable = timetable.filter((entry) => entry.id !== button.dataset.deleteClass);
+  const deletedEntry = timetable.find((entry) => entry.id === button.dataset.deleteClass);
+  timetable = deletedEntry?.sourceCourseId
+    ? timetable.filter((entry) => entry.sourceCourseId !== deletedEntry.sourceCourseId || entry.semesterId !== deletedEntry.semesterId)
+    : timetable.filter((entry) => entry.id !== button.dataset.deleteClass);
   saveTimetable();
   renderTimetableList();
+  renderTimetableCourseCatalog();
   render();
 });
 
-timetableSemester.addEventListener("change", updateTimetableSemesterSummary);
+timetableSemester.addEventListener("change", () => {
+  updateTimetableSemesterSummary();
+  void loadTimetableCourseCatalog();
+});
+
+timetableCourseSearch.addEventListener("input", renderTimetableCourseCatalog);
+
+addSelectedCourses.addEventListener("click", () => {
+  const selectedIds = [...timetableCatalogList.querySelectorAll("[data-catalog-course]:checked")]
+    .map((input) => input.dataset.catalogCourse);
+  if (selectedIds.length === 0) {
+    setTimetableCatalogMessage("추가할 수업을 선택해주세요.", true);
+    return;
+  }
+
+  let addedCourses = 0;
+  let addedMeetings = 0;
+  selectedIds.forEach((courseId) => {
+    const course = timetableCourseCatalog.find((item) => item.id === courseId);
+    if (!course || timetable.some((entry) => entry.semesterId === timetableSemester.value && entry.sourceCourseId === course.id)) return;
+    course.meetings.forEach((meeting) => {
+      timetable.push({
+        courseCode: course.code,
+        dayOfWeek: meeting.dayOfWeek,
+        end: meeting.end,
+        id: makeId(),
+        professor: course.professor,
+        room: meeting.room,
+        semesterId: course.semesterId,
+        sourceCourseId: course.id,
+        start: meeting.start,
+        title: course.title
+      });
+      addedMeetings += 1;
+    });
+    addedCourses += 1;
+  });
+
+  if (addedCourses === 0) {
+    setTimetableCatalogMessage("이미 내 시간표에 추가된 수업입니다.", true);
+    return;
+  }
+  timetable.sort(compareTimetableEntries);
+  saveTimetable();
+  renderTimetableList();
+  renderTimetableCourseCatalog();
+  render();
+  setTimetableCatalogMessage(`수업 ${addedCourses}개를 추가했습니다${addedMeetings > addedCourses ? ` · 일정 ${addedMeetings}개` : ""}.`);
+});
 
 cancelTimetableEdit.addEventListener("click", () => {
   resetTimetableEntryForm();
@@ -1221,7 +1278,7 @@ function normalizeTimetableEntry(entry) {
   const title = String(entry.title || "").trim();
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !title || !start || !end) return null;
   if (timeToMinutes(end) <= timeToMinutes(start)) return null;
-  return {
+  const normalized = {
     dayOfWeek,
     end,
     id: String(entry.id || makeId()),
@@ -1229,6 +1286,11 @@ function normalizeTimetableEntry(entry) {
     start,
     title
   };
+  ["courseCode", "professor", "room", "sourceCourseId"].forEach((key) => {
+    const value = String(entry[key] || "").trim();
+    if (value) normalized[key] = value;
+  });
+  return normalized;
 }
 
 function migrateLegacyTimetableEntries() {
@@ -1994,8 +2056,13 @@ function openTimetableModalDialog() {
   renderTimetableSemesterOptions();
   resetTimetableEntryForm();
   renderTimetableList();
+  timetableCourseSearch.value = "";
+  timetableCourseCatalog = [];
+  timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오는 중입니다.</div>';
+  setTimetableCatalogMessage("");
   timetableModal.classList.remove("hidden");
-  timetableTitle.focus();
+  void loadTimetableCourseCatalog();
+  timetableCourseSearch.focus();
 }
 
 function closeTimetableModalDialog() {
@@ -2037,6 +2104,70 @@ function updateTimetableSemesterSummary() {
     : "적용할 학기를 선택해주세요.";
 }
 
+async function loadTimetableCourseCatalog() {
+  const semesterId = timetableSemester.value;
+  timetableCourseCatalog = [];
+  setTimetableCatalogMessage("");
+  timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오는 중입니다.</div>';
+  addSelectedCourses.disabled = true;
+  try {
+    const response = await fetch(`/api/course-catalog?semesterId=${encodeURIComponent(semesterId)}`);
+    if (!response.ok) throw new Error("course catalog request failed");
+    const result = await response.json();
+    if (semesterId !== timetableSemester.value) return;
+    timetableCourseCatalog = Array.isArray(result.courses) ? result.courses : [];
+    renderTimetableCourseCatalog();
+  } catch {
+    timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오지 못했습니다.</div>';
+    setTimetableCatalogMessage("등록 수업 목록을 불러오지 못했습니다.", true);
+  } finally {
+    addSelectedCourses.disabled = timetableCourseCatalog.length === 0;
+  }
+}
+
+function renderTimetableCourseCatalog() {
+  const query = timetableCourseSearch.value.trim().toLocaleLowerCase("ko-KR");
+  const courses = timetableCourseCatalog.filter((course) => (
+    !query || [course.title, course.code, course.professor, course.department]
+      .some((value) => String(value || "").toLocaleLowerCase("ko-KR").includes(query))
+  ));
+  if (timetableCourseCatalog.length === 0) {
+    timetableCatalogList.innerHTML = '<div class="empty-state compact">이 학기에 등록된 공통 수업이 없습니다.</div>';
+    addSelectedCourses.disabled = true;
+    return;
+  }
+  if (courses.length === 0) {
+    timetableCatalogList.innerHTML = '<div class="empty-state compact">검색 결과가 없습니다.</div>';
+    return;
+  }
+  timetableCatalogList.innerHTML = courses.map((course) => {
+    const alreadyAdded = timetable.some((entry) => entry.semesterId === course.semesterId && entry.sourceCourseId === course.id);
+    return `
+      <label class="timetable-catalog-item${alreadyAdded ? " selected" : ""}">
+        <input type="checkbox" data-catalog-course="${escapeHtml(course.id)}" ${alreadyAdded ? "checked disabled" : ""}>
+        <span>
+          <strong>${escapeHtml(course.title)} <em>${escapeHtml(course.code)}</em></strong>
+          <small>${escapeHtml(course.department)} · ${escapeHtml(course.professor || "교수 미지정")}</small>
+          <small>${escapeHtml(formatCatalogMeetings(course.meetings))}</small>
+        </span>
+      </label>
+    `;
+  }).join("");
+  addSelectedCourses.disabled = false;
+}
+
+function formatCatalogMeetings(meetings) {
+  return (meetings || []).map((meeting) => (
+    `${dayNames[meeting.dayOfWeek - 1] || ""}요일 ${meeting.start}-${meeting.end}${meeting.room ? ` · ${meeting.room}` : ""}`
+  )).join(" / ");
+}
+
+function setTimetableCatalogMessage(message, isError = false) {
+  timetableCatalogMessage.textContent = message;
+  timetableCatalogMessage.classList.toggle("hidden", !message);
+  timetableCatalogMessage.classList.toggle("error", isError);
+}
+
 function renderTimetableList() {
   if (timetable.length === 0) {
     timetableList.innerHTML = '<div class="empty-state compact">등록된 수업이 없습니다.</div>';
@@ -2048,7 +2179,7 @@ function renderTimetableList() {
       <article class="timetable-item">
         <div>
           <strong>${escapeHtml(entry.title)}</strong>
-          <span>${escapeHtml(getSemesterName(entry.semesterId))} · ${dayNames[entry.dayOfWeek - 1]}요일 · ${escapeHtml(entry.start)}-${escapeHtml(entry.end)}</span>
+          <span>${escapeHtml(getSemesterName(entry.semesterId))} · ${dayNames[entry.dayOfWeek - 1]}요일 · ${escapeHtml(entry.start)}-${escapeHtml(entry.end)}${entry.room ? ` · ${escapeHtml(entry.room)}` : ""}${entry.professor ? ` · ${escapeHtml(entry.professor)}` : ""}</span>
         </div>
         <div class="item-actions">
           <button type="button" class="action-button edit-button" data-edit-class="${escapeHtml(entry.id)}">수정</button>

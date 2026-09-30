@@ -14,9 +14,15 @@
     "@kyungseopk1m/holidays-kr": "^2.1.1",
     "@napi-rs/canvas": "^1.0.8",
     "@tesseract.js-data/kor": "^1.0.0",
+    "exceljs": "^4.4.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.22.0",
     "tesseract.js": "^7.0.0"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

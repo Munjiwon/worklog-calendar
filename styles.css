@@ -775,6 +775,76 @@ button:disabled {
   font-weight: 800;
 }
 
+.course-catalog-card {
+  align-self: start;
+}
+
+.course-import-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.course-import-form button[type="submit"] {
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.course-import-help {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.course-catalog-list {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.course-catalog-list.hidden {
+  display: none;
+}
+
+.course-catalog-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  border-radius: 7px;
+  background: #f8fbff;
+}
+
+.course-catalog-item strong,
+.course-catalog-item small,
+.course-catalog-item em {
+  display: block;
+}
+
+.course-catalog-item strong span,
+.course-catalog-item small,
+.course-catalog-item em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.course-catalog-item small {
+  margin-top: 3px;
+}
+
+.course-catalog-item em {
+  flex: 0 0 min(240px, 42%);
+  text-align: right;
+}
+
 .user-list-card {
   grid-column: 1 / -1;
 }
@@ -1567,9 +1637,117 @@ button:disabled {
   line-height: 1.5;
 }
 
+.timetable-semester-picker {
+  display: grid;
+  grid-template-columns: minmax(180px, 360px);
+}
+
+.timetable-catalog-panel {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.timetable-catalog-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.timetable-catalog-header h3,
+.timetable-catalog-header p {
+  margin: 0;
+}
+
+.timetable-catalog-header h3 {
+  font-size: 15px;
+}
+
+.timetable-catalog-header p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.timetable-catalog-header input {
+  width: min(320px, 48%);
+}
+
+.timetable-catalog-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 250px;
+  overflow: auto;
+}
+
+.timetable-catalog-item {
+  display: flex;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.timetable-catalog-item.selected {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.timetable-catalog-item input {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+}
+
+.timetable-catalog-item span,
+.timetable-catalog-item strong,
+.timetable-catalog-item small {
+  display: block;
+  min-width: 0;
+}
+
+.timetable-catalog-item strong {
+  font-size: 13px;
+}
+
+.timetable-catalog-item strong em,
+.timetable-catalog-item small {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.timetable-catalog-item small {
+  margin-top: 3px;
+}
+
+.timetable-catalog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.timetable-catalog-actions button {
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 6px;
+  color: #fff;
+  background: #2563eb;
+  font-weight: 800;
+}
+
 .timetable-entry-form {
   display: grid;
-  grid-template-columns: minmax(190px, 1.2fr) 100px minmax(160px, 1fr) 110px 110px auto;
+  grid-template-columns: 100px minmax(190px, 1fr) 110px 110px auto;
   gap: 9px;
   align-items: end;
 }
@@ -1683,8 +1861,34 @@ button:disabled {
     grid-template-columns: 1fr 1fr;
   }
 
+  .timetable-catalog-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timetable-catalog-header input {
+    width: 100%;
+  }
+
+  .timetable-catalog-list {
+    grid-template-columns: 1fr;
+  }
+
+  .course-import-form {
+    grid-template-columns: 1fr;
+  }
+
+  .course-catalog-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .course-catalog-item em {
+    flex-basis: auto;
+    text-align: left;
+  }
+
   .timetable-title-field,
-  .timetable-semester-field,
   .timetable-form-actions {
     grid-column: 1 / -1;
   }

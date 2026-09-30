@@ -254,12 +254,26 @@
       </div>
       <p id="timetableSemesterSummary" class="timetable-semester-summary"></p>
       <p class="timetable-help">등록한 수업은 관리자가 지정한 학기 동안 매주 반복되며, 근무 일정과 겹치면 저장 전에 알려드립니다.</p>
+      <label class="timetable-semester-picker">
+        적용 학기
+        <select id="timetableSemester" required></select>
+      </label>
+      <section class="timetable-catalog-panel" aria-labelledby="timetableCatalogTitle">
+        <div class="timetable-catalog-header">
+          <div>
+            <h3 id="timetableCatalogTitle">등록된 수업 불러오기</h3>
+            <p>관리자가 올린 전공 수업을 검색하고 선택하세요.</p>
+          </div>
+          <input id="timetableCourseSearch" type="search" placeholder="과목명, 교수, 학과, 분반 검색" aria-label="등록 수업 검색">
+        </div>
+        <p id="timetableCatalogMessage" class="form-message hidden" aria-live="polite"></p>
+        <div id="timetableCatalogList" class="timetable-catalog-list"></div>
+        <div class="timetable-catalog-actions">
+          <button id="addSelectedCourses" type="button">선택한 수업 추가</button>
+        </div>
+      </section>
       <form id="timetableEntryForm" class="timetable-entry-form">
         <input id="timetableEntryId" type="hidden">
-        <label class="timetable-semester-field">
-          적용 학기
-          <select id="timetableSemester" required></select>
-        </label>
         <label>
           요일
           <select id="timetableDayOfWeek" required>

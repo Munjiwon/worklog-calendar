@@ -56,6 +56,30 @@
         <div id="semesterList" class="semester-list hidden"></div>
       </form>
 
+      <section class="summary-panel admin-card course-catalog-card" aria-label="수업 데이터 관리">
+        <div class="panel-header">
+          <div>
+            <h2>수업 데이터 관리</h2>
+            <p class="admin-card-description">학기별 전공 수업 엑셀을 올리면 공통 수업 목록을 갱신합니다.</p>
+          </div>
+        </div>
+        <p id="courseImportMessage" class="form-message hidden" aria-live="polite"></p>
+        <form id="courseImportForm" class="course-import-form">
+          <label>
+            적용 학기
+            <select id="courseImportSemester" required></select>
+          </label>
+          <label>
+            수업시간표 엑셀
+            <input id="courseImportFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+          </label>
+          <button id="courseImportSubmit" type="submit">수업 목록 등록</button>
+        </form>
+        <p class="course-import-help">필수 열: 학과, 교과, 과목-분반, 과목명, 교수, 개설시간 및 강의실</p>
+        <button id="courseCatalogToggle" type="button" class="semester-list-toggle secondary" aria-expanded="false" aria-controls="courseCatalogList">등록 수업 0개 펼치기</button>
+        <div id="courseCatalogList" class="course-catalog-list hidden"></div>
+      </section>
+
       <form id="userForm" class="summary-panel admin-card">
         <div class="panel-header">
           <h2>계정 만들기</h2>

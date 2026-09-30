@@ -28,9 +28,17 @@ const semesterSubmit = document.querySelector("#semesterSubmit");
 const cancelSemesterEdit = document.querySelector("#cancelSemesterEdit");
 const semesterList = document.querySelector("#semesterList");
 const semesterListToggle = document.querySelector("#semesterListToggle");
+const courseImportForm = document.querySelector("#courseImportForm");
+const courseImportMessage = document.querySelector("#courseImportMessage");
+const courseImportSemester = document.querySelector("#courseImportSemester");
+const courseImportFile = document.querySelector("#courseImportFile");
+const courseImportSubmit = document.querySelector("#courseImportSubmit");
+const courseCatalogToggle = document.querySelector("#courseCatalogToggle");
+const courseCatalogList = document.querySelector("#courseCatalogList");
 
 let users = [];
 let semesters = [];
+let courseCatalog = [];
 
 initializeAdmin();
 
@@ -49,7 +57,51 @@ async function initializeAdmin() {
   accountName.textContent = session.name || session.username;
   accountGreeting.hidden = false;
   await Promise.all([loadUsers(), loadSemesters()]);
+  await loadCourseCatalog();
 }
+
+courseImportForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setCourseImportMessage("");
+  const file = courseImportFile.files[0];
+  if (!file) {
+    setCourseImportMessage("수업시간표 엑셀 파일을 선택해주세요.", true);
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("semesterId", courseImportSemester.value);
+  formData.append("file", file);
+  courseImportSubmit.disabled = true;
+  courseImportSubmit.textContent = "등록 중...";
+  try {
+    const response = await fetch("/api/course-catalog/import", {
+      body: formData,
+      method: "POST"
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      setCourseImportMessage(result.error || "수업 목록을 등록할 수 없습니다.", true);
+      return;
+    }
+    courseImportFile.value = "";
+    await loadCourseCatalog();
+    setCourseCatalogExpanded(true);
+    const skipped = result.skippedRows?.length ? ` · 제외 행 ${result.skippedRows.length}개` : "";
+    setCourseImportMessage(`${result.semester.name} 수업 ${result.courseCount}개를 등록했습니다.${skipped}`);
+  } catch {
+    setCourseImportMessage("수업 목록을 등록할 수 없습니다.", true);
+  } finally {
+    courseImportSubmit.disabled = false;
+    courseImportSubmit.textContent = "수업 목록 등록";
+  }
+});
+
+courseImportSemester.addEventListener("change", renderCourseCatalog);
+
+courseCatalogToggle.addEventListener("click", () => {
+  setCourseCatalogExpanded(courseCatalogToggle.getAttribute("aria-expanded") !== "true");
+});
 
 semesterForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -212,6 +264,18 @@ async function loadSemesters() {
   const result = await response.json();
   semesters = result.semesters || [];
   renderSemesters();
+  renderCourseImportSemesterOptions();
+}
+
+async function loadCourseCatalog() {
+  const response = await fetch("/api/course-catalog");
+  if (!response.ok) {
+    setCourseImportMessage("등록된 수업 목록을 불러올 수 없습니다.", true);
+    return;
+  }
+  const result = await response.json();
+  courseCatalog = result.courses || [];
+  renderCourseCatalog();
 }
 
 function resetSemesterForm() {
@@ -239,6 +303,61 @@ function renderSemesters() {
       </div>
     </article>
   `).join("");
+}
+
+function renderCourseImportSemesterOptions() {
+  const selected = courseImportSemester.value;
+  courseImportSemester.innerHTML = semesters.length
+    ? semesters.map((semester) => `<option value="${escapeHtml(semester.id)}">${escapeHtml(semester.name)}</option>`).join("")
+    : '<option value="">학기를 먼저 등록해주세요</option>';
+  courseImportSemester.disabled = semesters.length === 0;
+  courseImportFile.disabled = semesters.length === 0;
+  courseImportSubmit.disabled = semesters.length === 0;
+  if (semesters.some((semester) => semester.id === selected)) courseImportSemester.value = selected;
+  renderCourseCatalog();
+}
+
+function renderCourseCatalog() {
+  const courses = courseCatalog.filter((course) => course.semesterId === courseImportSemester.value);
+  updateCourseCatalogToggle(courses.length);
+  if (courses.length === 0) {
+    courseCatalogList.innerHTML = '<div class="empty-state compact">선택한 학기에 등록된 수업이 없습니다.</div>';
+    return;
+  }
+  courseCatalogList.innerHTML = courses.map((course) => `
+    <article class="course-catalog-item">
+      <div>
+        <strong>${escapeHtml(course.title)} <span>${escapeHtml(course.code)}</span></strong>
+        <small>${escapeHtml(course.department)} · ${escapeHtml(course.professor || "교수 미지정")}</small>
+      </div>
+      <em>${escapeHtml(formatCourseMeetings(course.meetings))}</em>
+    </article>
+  `).join("");
+}
+
+function formatCourseMeetings(meetings) {
+  const days = ["", "월", "화", "수", "목", "금", "토", "일"];
+  return (meetings || []).map((meeting) => (
+    `${days[meeting.dayOfWeek] || ""} ${meeting.start}-${meeting.end}${meeting.room ? ` · ${meeting.room}` : ""}`
+  )).join(" / ");
+}
+
+function setCourseCatalogExpanded(expanded) {
+  courseCatalogToggle.setAttribute("aria-expanded", String(expanded));
+  courseCatalogList.classList.toggle("hidden", !expanded);
+  const count = courseCatalog.filter((course) => course.semesterId === courseImportSemester.value).length;
+  updateCourseCatalogToggle(count);
+}
+
+function updateCourseCatalogToggle(count) {
+  const expanded = courseCatalogToggle.getAttribute("aria-expanded") === "true";
+  courseCatalogToggle.textContent = `등록 수업 ${count}개 ${expanded ? "접기" : "펼치기"}`;
+}
+
+function setCourseImportMessage(message, isError = false) {
+  courseImportMessage.textContent = message;
+  courseImportMessage.classList.toggle("hidden", !message);
+  courseImportMessage.classList.toggle("error", isError);
 }
 
 function setSemesterListExpanded(expanded) {

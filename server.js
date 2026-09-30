@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const http = require("http");
 const path = require("path");
+const ExcelJS = require("exceljs");
 const { Pool } = require("pg");
 const { holidays: fetchKoreanPublicHolidays } = require("@kyungseopk1m/holidays-kr");
 const { createCanvas, DOMMatrix, ImageData, Path2D } = require("@napi-rs/canvas");
@@ -161,6 +162,23 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "DELETE" && pathname.startsWith("/api/semesters/")) {
       if (!requireAdmin(response, session)) return;
       await handleDeleteSemester(response, decodeURIComponent(pathname.slice("/api/semesters/".length)));
+      return;
+    }
+
+    if (request.method === "GET" && pathname === "/api/course-catalog") {
+      if (!session) {
+        sendJson(response, 401, { error: "unauthorized" });
+        return;
+      }
+      const semesterId = String(url.searchParams.get("semesterId") || "");
+      const courses = (await loadCourseCatalog()).filter((course) => !semesterId || course.semesterId === semesterId);
+      sendJson(response, 200, { courses });
+      return;
+    }
+
+    if (request.method === "POST" && pathname === "/api/course-catalog/import") {
+      if (!requireAdmin(response, session)) return;
+      await handleImportCourseCatalog(request, response);
       return;
     }
 
@@ -478,6 +496,184 @@ async function handleDeleteSemester(response, semesterId) {
     deletedSemester: semester,
     removedTimetableEntries
   });
+}
+
+async function handleImportCourseCatalog(request, response) {
+  const body = await readRequestBuffer(request, 8_000_000);
+  const form = parseMultipartFormData(request.headers["content-type"] || "", body);
+  const file = form.files.find((item) => item.name === "file") || form.files[0];
+  const semesterId = String(form.fields.find((item) => item.name === "semesterId")?.value || "").trim();
+  const semesters = await loadSemesterSettings();
+  const semester = semesters.find((item) => item.id === semesterId);
+
+  if (!semester) {
+    sendJson(response, 400, { error: "수업을 등록할 학기를 선택해주세요." });
+    return;
+  }
+  if (!file || file.data.length === 0) {
+    sendJson(response, 400, { error: "수업시간표 엑셀 파일을 선택해주세요." });
+    return;
+  }
+  if (!/\.xlsx$/i.test(file.filename || "") || !file.data.subarray(0, 2).equals(Buffer.from("PK"))) {
+    sendJson(response, 400, { error: "XLSX 형식의 엑셀 파일만 업로드할 수 있습니다." });
+    return;
+  }
+
+  try {
+    const imported = await parseCourseCatalogWorkbook(file.data, semesterId);
+    if (imported.courses.length === 0) {
+      sendJson(response, 400, { error: "엑셀 파일에서 등록할 수업을 찾지 못했습니다." });
+      return;
+    }
+    const existing = await loadCourseCatalog();
+    const previousCount = existing.filter((course) => course.semesterId === semesterId).length;
+    const courses = existing.filter((course) => course.semesterId !== semesterId).concat(imported.courses);
+    await saveCourseCatalog(courses);
+    sendJson(response, 200, {
+      courseCount: imported.courses.length,
+      previousCount,
+      semester,
+      skippedRows: imported.skippedRows
+    });
+  } catch (error) {
+    console.error(error);
+    sendJson(response, 400, { error: error.message || "수업시간표 엑셀 파일을 읽을 수 없습니다." });
+  }
+}
+
+async function parseCourseCatalogWorkbook(buffer, semesterId) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) throw new Error("엑셀 파일에 시트가 없습니다.");
+
+  const headers = new Map();
+  worksheet.getRow(1).eachCell((cell, column) => {
+    headers.set(String(cell.text || "").trim(), column);
+  });
+  const requiredHeaders = ["학과", "교과", "과목-분반", "과목명", "교수", "개설시간 및 강의실"];
+  const missingHeaders = requiredHeaders.filter((header) => !headers.has(header));
+  if (missingHeaders.length > 0) {
+    throw new Error(`필수 열이 없습니다: ${missingHeaders.join(", ")}`);
+  }
+
+  const courses = [];
+  const skippedRows = [];
+  const value = (row, header) => {
+    const column = headers.get(header);
+    return column ? String(row.getCell(column).text || "").trim() : "";
+  };
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const code = value(row, "과목-분반");
+    const title = value(row, "과목명");
+    if (!code && !title) continue;
+    const scheduleText = value(row, "개설시간 및 강의실");
+    const meetings = parseCourseSchedule(scheduleText);
+    if (!code || !title || meetings.length === 0) {
+      skippedRows.push(rowNumber);
+      continue;
+    }
+    const course = normalizeCourseCatalogEntry({
+      capacity: value(row, "인원"),
+      category: value(row, "교과"),
+      code,
+      credits: value(row, "학점"),
+      department: value(row, "학과"),
+      hours: value(row, "시수"),
+      id: makeCourseCatalogId(semesterId, code),
+      meetings,
+      professor: value(row, "교수"),
+      program: value(row, "과정"),
+      rank: value(row, "직위"),
+      scheduleText,
+      semesterId,
+      subMajor: value(row, "세부전공"),
+      title
+    });
+    if (course) courses.push(course);
+  }
+
+  return {
+    courses: courses.filter(Boolean).sort(compareCourseCatalogEntries),
+    skippedRows
+  };
+}
+
+function parseCourseSchedule(value) {
+  const schedule = String(value || "").trim();
+  const dayMap = { 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6, 일: 7 };
+  const meetings = [];
+  const pattern = /([월화수목금토일])[^()]*\((\d{1,2}:\d{2})\s*[-~～〜–]\s*(\d{1,2}:\d{2})\)\(([^)]*)\)/g;
+  let match;
+  while ((match = pattern.exec(schedule))) {
+    const start = normalizeWorklogTime(match[2]);
+    const end = normalizeWorklogTime(match[3]);
+    if (!start || !end || worklogTimeToMinutes(end) <= worklogTimeToMinutes(start)) continue;
+    meetings.push({
+      dayOfWeek: dayMap[match[1]],
+      end,
+      room: String(match[4] || "").trim().slice(0, 80),
+      start
+    });
+  }
+  return meetings;
+}
+
+function normalizeCourseCatalogEntry(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const semesterId = String(value.semesterId || "").trim();
+  const code = String(value.code || "").trim().slice(0, 40);
+  const title = String(value.title || "").trim().slice(0, 120);
+  const meetings = Array.isArray(value.meetings)
+    ? value.meetings.map((meeting) => normalizeCourseMeeting(meeting)).filter(Boolean)
+    : [];
+  if (!semesterId || !code || !title || meetings.length === 0) return null;
+  return {
+    capacity: String(value.capacity || "").trim().slice(0, 20),
+    category: String(value.category || "").trim().slice(0, 40),
+    code,
+    credits: String(value.credits || "").trim().slice(0, 20),
+    department: String(value.department || "").trim().slice(0, 120),
+    hours: String(value.hours || "").trim().slice(0, 20),
+    id: String(value.id || makeCourseCatalogId(semesterId, code)),
+    meetings,
+    professor: String(value.professor || "").trim().slice(0, 80),
+    program: String(value.program || "").trim().slice(0, 40),
+    rank: String(value.rank || "").trim().slice(0, 40),
+    scheduleText: String(value.scheduleText || "").trim().slice(0, 300),
+    semesterId,
+    subMajor: String(value.subMajor || "").trim().slice(0, 80),
+    title
+  };
+}
+
+function normalizeCourseMeeting(value) {
+  const dayOfWeek = Number(value?.dayOfWeek);
+  const start = normalizeWorklogTime(value?.start);
+  const end = normalizeWorklogTime(value?.end);
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !start || !end) return null;
+  if (worklogTimeToMinutes(end) <= worklogTimeToMinutes(start)) return null;
+  return {
+    dayOfWeek,
+    end,
+    room: String(value?.room || "").trim().slice(0, 80),
+    start
+  };
+}
+
+function makeCourseCatalogId(semesterId, code) {
+  const digest = crypto.createHash("sha256")
+    .update(`${semesterId}|${code}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `course-${digest}`;
+}
+
+function compareCourseCatalogEntries(left, right) {
+  return left.department.localeCompare(right.department, "ko-KR")
+    || left.title.localeCompare(right.title, "ko-KR")
+    || left.code.localeCompare(right.code, "ko-KR");
 }
 
 async function handleParseWorklogPdf(request, response) {
@@ -998,7 +1194,7 @@ function normalizeTimetableEntry(entry) {
   const title = String(entry.title || "").trim().slice(0, 80);
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7 || !title || !start || !end) return null;
   if (worklogTimeToMinutes(end) <= worklogTimeToMinutes(start)) return null;
-  return {
+  const normalized = {
     dayOfWeek,
     end,
     id: String(entry.id || crypto.randomUUID()),
@@ -1006,6 +1202,15 @@ function normalizeTimetableEntry(entry) {
     start,
     title
   };
+  const courseCode = String(entry.courseCode || "").trim().slice(0, 40);
+  const professor = String(entry.professor || "").trim().slice(0, 80);
+  const room = String(entry.room || "").trim().slice(0, 80);
+  const sourceCourseId = String(entry.sourceCourseId || "").trim();
+  if (courseCode) normalized.courseCode = courseCode;
+  if (professor) normalized.professor = professor;
+  if (room) normalized.room = room;
+  if (sourceCourseId) normalized.sourceCourseId = sourceCourseId;
+  return normalized;
 }
 
 function normalizeShiftData(shift) {
@@ -1081,6 +1286,60 @@ async function saveSemesterSettingsToDatabase(database, semesters) {
   );
 }
 
+async function loadCourseCatalog() {
+  if (dbPool) {
+    return loadCourseCatalogFromDatabase(dbPool);
+  }
+
+  try {
+    const settings = JSON.parse(await fs.readFile(APP_SETTINGS_FILE, "utf8"));
+    return normalizeCourseCatalog(settings.courseCatalog);
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function loadCourseCatalogFromDatabase(database) {
+  const result = await database.query("SELECT value FROM app_settings WHERE key = 'course_catalog' LIMIT 1");
+  return normalizeCourseCatalog(result.rows[0]?.value);
+}
+
+async function saveCourseCatalog(courses) {
+  const normalized = normalizeCourseCatalog(courses);
+  if (dbPool) {
+    await saveCourseCatalogToDatabase(dbPool, normalized);
+    return;
+  }
+
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  let settings = {};
+  try {
+    settings = JSON.parse(await fs.readFile(APP_SETTINGS_FILE, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  settings.courseCatalog = normalized;
+  await fs.writeFile(APP_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+async function saveCourseCatalogToDatabase(database, courses) {
+  await database.query(
+    `INSERT INTO app_settings (key, value, updated_at)
+     VALUES ('course_catalog', $1::jsonb, NOW())
+     ON CONFLICT (key)
+     DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [JSON.stringify(courses)]
+  );
+}
+
+function normalizeCourseCatalog(value) {
+  return (Array.isArray(value) ? value : [])
+    .map(normalizeCourseCatalogEntry)
+    .filter(Boolean)
+    .sort(compareCourseCatalogEntries);
+}
+
 async function deleteSemesterAndTimetables(remainingSemesters, semesterId, removeUnassigned) {
   const normalizedSemesters = normalizeSemesterCollection(remainingSemesters);
   if (dbPool) {
@@ -1089,6 +1348,8 @@ async function deleteSemesterAndTimetables(remainingSemesters, semesterId, remov
     try {
       await client.query("BEGIN");
       await saveSemesterSettingsToDatabase(client, normalizedSemesters);
+      const catalog = await loadCourseCatalogFromDatabase(client);
+      await saveCourseCatalogToDatabase(client, catalog.filter((course) => course.semesterId !== semesterId));
       const result = await client.query("SELECT username, data FROM calendar_data FOR UPDATE");
       for (const row of result.rows) {
         const data = normalizeCalendarData(row.data);
@@ -1115,6 +1376,8 @@ async function deleteSemesterAndTimetables(remainingSemesters, semesterId, remov
   }
 
   await saveSemesterSettings(normalizedSemesters);
+  const catalog = await loadCourseCatalog();
+  await saveCourseCatalog(catalog.filter((course) => course.semesterId !== semesterId));
   const calendarData = await loadCalendarDataFile();
   let removedCount = 0;
   Object.entries(calendarData).forEach(([username, rawData]) => {
@@ -1562,10 +1825,13 @@ function sendJson(response, status, data) {
 module.exports = {
   extractWorklogEntriesFromPdf,
   normalizeCalendarData,
+  normalizeCourseCatalogEntry,
   normalizePublicHolidays,
   normalizeSemesterCollection,
   normalizeSemesterSetting,
   normalizeTimetableEntry,
+  parseCourseCatalogWorkbook,
+  parseCourseSchedule,
   parseWorklogEntries,
   shouldRecordUserAccess
 };
