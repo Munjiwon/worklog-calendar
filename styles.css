@@ -730,6 +730,10 @@ button:disabled {
   margin-top: 2px;
 }
 
+.semester-list.hidden {
+  display: none;
+}
+
 .semester-list-toggle {
   width: 100%;
   height: 40px;
