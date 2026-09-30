@@ -115,7 +115,7 @@ const timetableSubmit = document.querySelector("#timetableSubmit");
 const cancelTimetableEdit = document.querySelector("#cancelTimetableEdit");
 const timetableCourseSearch = document.querySelector("#timetableCourseSearch");
 const timetableDepartmentFilter = document.querySelector("#timetableDepartmentFilter");
-const timetableDateFilter = document.querySelector("#timetableDateFilter");
+const timetableDayFilter = document.querySelector("#timetableDayFilter");
 const timetableProfessorFilter = document.querySelector("#timetableProfessorFilter");
 const resetTimetableCatalogFilters = document.querySelector("#resetTimetableCatalogFilters");
 const timetableCatalogCount = document.querySelector("#timetableCatalogCount");
@@ -237,7 +237,7 @@ timetableSemester.addEventListener("change", () => {
 
 timetableCourseSearch.addEventListener("input", renderTimetableCourseCatalog);
 timetableDepartmentFilter.addEventListener("change", renderTimetableCourseCatalog);
-timetableDateFilter.addEventListener("change", renderTimetableCourseCatalog);
+timetableDayFilter.addEventListener("change", renderTimetableCourseCatalog);
 timetableProfessorFilter.addEventListener("change", renderTimetableCourseCatalog);
 
 resetTimetableCatalogFilters.addEventListener("click", () => {
@@ -2161,8 +2161,7 @@ function renderTimetableCourseCatalog() {
   const query = timetableCourseSearch.value.trim().toLocaleLowerCase("ko-KR");
   const department = timetableDepartmentFilter.value;
   const professor = timetableProfessorFilter.value;
-  const selectedDate = timetableDateFilter.value;
-  const selectedDay = selectedDate ? getCourseDayOfWeek(selectedDate) : 0;
+  const selectedDay = Number(timetableDayFilter.value || 0);
   const courses = timetableCourseCatalog.filter((course) => (
     (!query || [course.title, course.code, course.professor, course.department]
       .some((value) => String(value || "").toLocaleLowerCase("ko-KR").includes(query)))
@@ -2222,28 +2221,13 @@ function renderTimetableCourseFilterOptions() {
   if (departments.includes(department)) timetableDepartmentFilter.value = department;
   if (professors.includes(professor)) timetableProfessorFilter.value = professor;
 
-  const semester = semesters.find((item) => item.id === timetableSemester.value);
-  timetableDateFilter.min = semester?.startDate || "";
-  timetableDateFilter.max = semester?.endDate || "";
-  if (timetableDateFilter.value && (
-    timetableDateFilter.value < timetableDateFilter.min
-    || timetableDateFilter.value > timetableDateFilter.max
-  )) {
-    timetableDateFilter.value = "";
-  }
 }
 
 function resetTimetableCourseFilters() {
   timetableCourseSearch.value = "";
   timetableDepartmentFilter.value = "";
-  timetableDateFilter.value = "";
+  timetableDayFilter.value = "";
   timetableProfessorFilter.value = "";
-}
-
-function getCourseDayOfWeek(dateValue) {
-  const date = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return 0;
-  return date.getDay() || 7;
 }
 
 function formatCatalogMeetings(meetings) {
