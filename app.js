@@ -140,6 +140,7 @@ let tagMealSettings = {};
 let timetable = [];
 let semesters = [];
 let timetableCourseCatalog = [];
+const selectedCatalogCourseIds = new Set();
 let draggingShiftId = null;
 let creatingShift = null;
 let resizingShift = null;
@@ -229,6 +230,7 @@ timetableList.addEventListener("click", (event) => {
 
 timetableSemester.addEventListener("change", () => {
   updateTimetableSemesterSummary();
+  selectedCatalogCourseIds.clear();
   resetTimetableCourseFilters();
   void loadTimetableCourseCatalog();
 });
@@ -244,9 +246,20 @@ resetTimetableCatalogFilters.addEventListener("click", () => {
   timetableCourseSearch.focus();
 });
 
+timetableCatalogList.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-catalog-course]");
+  if (!input || input.disabled) return;
+  if (input.checked) {
+    selectedCatalogCourseIds.add(input.dataset.catalogCourse);
+  } else {
+    selectedCatalogCourseIds.delete(input.dataset.catalogCourse);
+  }
+  input.closest(".timetable-catalog-item")?.classList.toggle("selected", input.checked);
+  updateCatalogSelectionButton();
+});
+
 addSelectedCourses.addEventListener("click", () => {
-  const selectedIds = [...timetableCatalogList.querySelectorAll("[data-catalog-course]:checked")]
-    .map((input) => input.dataset.catalogCourse);
+  const selectedIds = [...selectedCatalogCourseIds];
   if (selectedIds.length === 0) {
     setTimetableCatalogMessage("추가할 수업을 선택해주세요.", true);
     return;
@@ -280,6 +293,7 @@ addSelectedCourses.addEventListener("click", () => {
     return;
   }
   timetable.sort(compareTimetableEntries);
+  selectedCatalogCourseIds.clear();
   saveTimetable();
   renderTimetableList();
   renderTimetableCourseCatalog();
@@ -2071,6 +2085,7 @@ function openTimetableModalDialog() {
   renderTimetableSemesterOptions();
   resetTimetableEntryForm();
   renderTimetableList();
+  selectedCatalogCourseIds.clear();
   resetTimetableCourseFilters();
   timetableCourseCatalog = [];
   timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오는 중입니다.</div>';
@@ -2125,7 +2140,7 @@ async function loadTimetableCourseCatalog() {
   timetableCatalogCount.textContent = "";
   setTimetableCatalogMessage("");
   timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오는 중입니다.</div>';
-  addSelectedCourses.disabled = true;
+  updateCatalogSelectionButton();
   try {
     const response = await fetch(`/api/course-catalog?semesterId=${encodeURIComponent(semesterId)}`);
     if (!response.ok) throw new Error("course catalog request failed");
@@ -2138,7 +2153,7 @@ async function loadTimetableCourseCatalog() {
     timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오지 못했습니다.</div>';
     setTimetableCatalogMessage("등록 수업 목록을 불러오지 못했습니다.", true);
   } finally {
-    addSelectedCourses.disabled = timetableCourseCatalog.length === 0;
+    updateCatalogSelectionButton();
   }
 }
 
@@ -2149,7 +2164,7 @@ function renderTimetableCourseCatalog() {
   const selectedDate = timetableDateFilter.value;
   const selectedDay = selectedDate ? getCourseDayOfWeek(selectedDate) : 0;
   const courses = timetableCourseCatalog.filter((course) => (
-    (!query || [course.title, course.code]
+    (!query || [course.title, course.code, course.professor, course.department]
       .some((value) => String(value || "").toLocaleLowerCase("ko-KR").includes(query)))
     && (!department || course.department === department)
     && (!professor || course.professor === professor)
@@ -2160,18 +2175,20 @@ function renderTimetableCourseCatalog() {
     : "";
   if (timetableCourseCatalog.length === 0) {
     timetableCatalogList.innerHTML = '<div class="empty-state compact">이 학기에 등록된 공통 수업이 없습니다.</div>';
-    addSelectedCourses.disabled = true;
+    updateCatalogSelectionButton();
     return;
   }
   if (courses.length === 0) {
     timetableCatalogList.innerHTML = '<div class="empty-state compact">검색 결과가 없습니다.</div>';
+    updateCatalogSelectionButton();
     return;
   }
   timetableCatalogList.innerHTML = courses.map((course) => {
     const alreadyAdded = timetable.some((entry) => entry.semesterId === course.semesterId && entry.sourceCourseId === course.id);
+    const selectedForAdd = selectedCatalogCourseIds.has(course.id);
     return `
-      <label class="timetable-catalog-item${alreadyAdded ? " selected" : ""}">
-        <input type="checkbox" data-catalog-course="${escapeHtml(course.id)}" ${alreadyAdded ? "checked disabled" : ""}>
+      <label class="timetable-catalog-item${alreadyAdded || selectedForAdd ? " selected" : ""}">
+        <input type="checkbox" data-catalog-course="${escapeHtml(course.id)}" ${alreadyAdded || selectedForAdd ? "checked" : ""} ${alreadyAdded ? "disabled" : ""}>
         <span>
           <strong>${escapeHtml(course.title)} <em>${escapeHtml(course.code)}</em></strong>
           <small>${escapeHtml(course.department)} · ${escapeHtml(course.professor || "교수 미지정")}</small>
@@ -2180,7 +2197,14 @@ function renderTimetableCourseCatalog() {
       </label>
     `;
   }).join("");
-  addSelectedCourses.disabled = false;
+  updateCatalogSelectionButton();
+}
+
+function updateCatalogSelectionButton() {
+  const availableIds = new Set(timetableCourseCatalog.map((course) => course.id));
+  const count = [...selectedCatalogCourseIds].filter((courseId) => availableIds.has(courseId)).length;
+  addSelectedCourses.textContent = count > 0 ? `선택한 수업 추가 (${count})` : "선택한 수업 추가";
+  addSelectedCourses.disabled = count === 0;
 }
 
 function renderTimetableCourseFilterOptions() {
