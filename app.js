@@ -114,6 +114,11 @@ const timetableList = document.querySelector("#timetableList");
 const timetableSubmit = document.querySelector("#timetableSubmit");
 const cancelTimetableEdit = document.querySelector("#cancelTimetableEdit");
 const timetableCourseSearch = document.querySelector("#timetableCourseSearch");
+const timetableDepartmentFilter = document.querySelector("#timetableDepartmentFilter");
+const timetableDateFilter = document.querySelector("#timetableDateFilter");
+const timetableProfessorFilter = document.querySelector("#timetableProfessorFilter");
+const resetTimetableCatalogFilters = document.querySelector("#resetTimetableCatalogFilters");
+const timetableCatalogCount = document.querySelector("#timetableCatalogCount");
 const timetableCatalogMessage = document.querySelector("#timetableCatalogMessage");
 const timetableCatalogList = document.querySelector("#timetableCatalogList");
 const addSelectedCourses = document.querySelector("#addSelectedCourses");
@@ -224,10 +229,20 @@ timetableList.addEventListener("click", (event) => {
 
 timetableSemester.addEventListener("change", () => {
   updateTimetableSemesterSummary();
+  resetTimetableCourseFilters();
   void loadTimetableCourseCatalog();
 });
 
 timetableCourseSearch.addEventListener("input", renderTimetableCourseCatalog);
+timetableDepartmentFilter.addEventListener("change", renderTimetableCourseCatalog);
+timetableDateFilter.addEventListener("change", renderTimetableCourseCatalog);
+timetableProfessorFilter.addEventListener("change", renderTimetableCourseCatalog);
+
+resetTimetableCatalogFilters.addEventListener("click", () => {
+  resetTimetableCourseFilters();
+  renderTimetableCourseCatalog();
+  timetableCourseSearch.focus();
+});
 
 addSelectedCourses.addEventListener("click", () => {
   const selectedIds = [...timetableCatalogList.querySelectorAll("[data-catalog-course]:checked")]
@@ -2056,7 +2071,7 @@ function openTimetableModalDialog() {
   renderTimetableSemesterOptions();
   resetTimetableEntryForm();
   renderTimetableList();
-  timetableCourseSearch.value = "";
+  resetTimetableCourseFilters();
   timetableCourseCatalog = [];
   timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오는 중입니다.</div>';
   setTimetableCatalogMessage("");
@@ -2107,6 +2122,7 @@ function updateTimetableSemesterSummary() {
 async function loadTimetableCourseCatalog() {
   const semesterId = timetableSemester.value;
   timetableCourseCatalog = [];
+  timetableCatalogCount.textContent = "";
   setTimetableCatalogMessage("");
   timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오는 중입니다.</div>';
   addSelectedCourses.disabled = true;
@@ -2116,6 +2132,7 @@ async function loadTimetableCourseCatalog() {
     const result = await response.json();
     if (semesterId !== timetableSemester.value) return;
     timetableCourseCatalog = Array.isArray(result.courses) ? result.courses : [];
+    renderTimetableCourseFilterOptions();
     renderTimetableCourseCatalog();
   } catch {
     timetableCatalogList.innerHTML = '<div class="empty-state compact">수업 목록을 불러오지 못했습니다.</div>';
@@ -2127,10 +2144,20 @@ async function loadTimetableCourseCatalog() {
 
 function renderTimetableCourseCatalog() {
   const query = timetableCourseSearch.value.trim().toLocaleLowerCase("ko-KR");
+  const department = timetableDepartmentFilter.value;
+  const professor = timetableProfessorFilter.value;
+  const selectedDate = timetableDateFilter.value;
+  const selectedDay = selectedDate ? getCourseDayOfWeek(selectedDate) : 0;
   const courses = timetableCourseCatalog.filter((course) => (
-    !query || [course.title, course.code, course.professor, course.department]
-      .some((value) => String(value || "").toLocaleLowerCase("ko-KR").includes(query))
+    (!query || [course.title, course.code]
+      .some((value) => String(value || "").toLocaleLowerCase("ko-KR").includes(query)))
+    && (!department || course.department === department)
+    && (!professor || course.professor === professor)
+    && (!selectedDay || course.meetings.some((meeting) => meeting.dayOfWeek === selectedDay))
   ));
+  timetableCatalogCount.textContent = timetableCourseCatalog.length > 0
+    ? `전체 ${timetableCourseCatalog.length}개 중 ${courses.length}개 표시`
+    : "";
   if (timetableCourseCatalog.length === 0) {
     timetableCatalogList.innerHTML = '<div class="empty-state compact">이 학기에 등록된 공통 수업이 없습니다.</div>';
     addSelectedCourses.disabled = true;
@@ -2154,6 +2181,45 @@ function renderTimetableCourseCatalog() {
     `;
   }).join("");
   addSelectedCourses.disabled = false;
+}
+
+function renderTimetableCourseFilterOptions() {
+  const department = timetableDepartmentFilter.value;
+  const professor = timetableProfessorFilter.value;
+  const departments = [...new Set(timetableCourseCatalog.map((course) => course.department).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "ko-KR"));
+  const professors = [...new Set(timetableCourseCatalog.map((course) => course.professor).filter(Boolean))]
+    .sort((left, right) => left.localeCompare(right, "ko-KR"));
+
+  timetableDepartmentFilter.innerHTML = '<option value="">전체 학과</option>'
+    + departments.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+  timetableProfessorFilter.innerHTML = '<option value="">전체 교수</option>'
+    + professors.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("");
+  if (departments.includes(department)) timetableDepartmentFilter.value = department;
+  if (professors.includes(professor)) timetableProfessorFilter.value = professor;
+
+  const semester = semesters.find((item) => item.id === timetableSemester.value);
+  timetableDateFilter.min = semester?.startDate || "";
+  timetableDateFilter.max = semester?.endDate || "";
+  if (timetableDateFilter.value && (
+    timetableDateFilter.value < timetableDateFilter.min
+    || timetableDateFilter.value > timetableDateFilter.max
+  )) {
+    timetableDateFilter.value = "";
+  }
+}
+
+function resetTimetableCourseFilters() {
+  timetableCourseSearch.value = "";
+  timetableDepartmentFilter.value = "";
+  timetableDateFilter.value = "";
+  timetableProfessorFilter.value = "";
+}
+
+function getCourseDayOfWeek(dateValue) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return 0;
+  return date.getDay() || 7;
 }
 
 function formatCatalogMeetings(meetings) {
