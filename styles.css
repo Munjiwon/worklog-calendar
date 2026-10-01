@@ -649,9 +649,9 @@ button:disabled {
 
 .login-landing-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
   align-items: center;
-  gap: 28px;
+  gap: 24px;
   width: min(1080px, 100%);
 }
 
