@@ -1,5 +1,10 @@
 (() => {
   const el = id => document.getElementById(id);
+  const duration = minutes => {
+    const total = Math.max(0, Math.round(minutes));
+    const hours = Math.floor(total / 60), rest = total % 60;
+    return `${hours}시간${rest ? ` ${rest}분` : ''}`;
+  };
   const modal = el('recommendModal');
   let result = null, snapshot = '', options = null, generation = 0;
   let view = 'calendar', month = '';
@@ -22,7 +27,7 @@
       result.items.forEach((s,i) => {
         if (s.date !== date) return;
         const checked = el('recResults').querySelector(`[data-rec="${i}"]`).checked;
-        html += `<button type="button" data-calendar-rec="${i}" aria-pressed="${checked}" class="rec-calendar-shift${s.overlapTags.length ? ' exception' : ''}${checked ? '' : ' deselected'}">${escapeHtml(s.tag)}<br>${s.start}–${s.end}<br>${s.minutes}분${s.overlapTags.length ? `<br>겹침: ${s.overlapTags.map(escapeHtml).join(', ')}` : ''}</button>`;
+        html += `<button type="button" data-calendar-rec="${i}" aria-pressed="${checked}" class="rec-calendar-shift${s.overlapTags.length ? ' exception' : ''}${checked ? '' : ' deselected'}">${escapeHtml(s.tag)}<br>${s.start}–${s.end}<br>${duration(s.minutes)}${s.overlapTags.length ? `<br>겹침: ${s.overlapTags.map(escapeHtml).join(', ')}` : ''}</button>`;
       });
       html += '</div>';
     }
@@ -56,7 +61,7 @@
       if (shifts.some(x => x.date === s.date && m >= timeToMinutes(x.start) && m < timeToMinutes(x.end) && !getMealWindowsForShift(x).some(w => m >= w.start && m < w.end))) overlap++;
     }
     const minutes = items.reduce((n,s) => n+s.minutes,0);
-    el('recApply').textContent = `선택 ${items.length}개 적용 · 태그 ${minutes}분 / 기존과 중복 ${overlap}분 / 실제 추가 ${minutes-overlap}분`;
+    el('recApply').textContent = `선택 ${items.length}개 적용 · 태그 ${duration(minutes)} / 기존과 중복 ${duration(overlap)} / 실제 추가 ${duration(minutes-overlap)}`;
     el('recApply').disabled = !items.length;
     drawCalendar();
   };
@@ -108,8 +113,8 @@
       const target = Math.max(0, Number(el('recHours').value)*60 - (el('recMode').value === 'total' ? existingMinutes : 0));
       options = { dates, existing, history, tag, target, dailyMax:Math.round(Number(el('recDaily').value)*60), start,end,allowed, classes:getClassesForDate, holiday:d => !el('recHoliday').checked && !!getHolidayInfo(d), net:getNetMinutes, preferences:model.patterns };
       result = WorklogRecommendation.plan(options); snapshot = state();
-      el('recStatus').textContent = `기존 ${existingMinutes/60}시간 · 추가 필요 ${target/60}시간 · 추천 ${(target-result.missing)/60}시간 · 부족 ${result.missing/60}시간. ${history.length ? `과거 ${history.length}개 일정 참고 · ${model.model ? 'AI 패턴 우선순위 반영' : '기본 패턴 분석 사용 (AI 연결 불가)'}` : '참고 기록 없이 빈 시간 기준으로 추천했습니다.'}`;
-      el('recResults').innerHTML = result.items.map((s,i) => `<label class="rec-check timetable-item"><input type="checkbox" data-rec="${i}" checked><span>${s.date} ${s.start}–${s.end} · 실근무 ${s.minutes}분${s.overlapTags.length ? `<br>겹침 예외: ${s.overlapTags.map(escapeHtml).join(', ')}` : '<br>겹침 없음'}</span></label>`).join('');
+      el('recStatus').textContent = `기존 ${duration(existingMinutes)} · 추가 필요 ${duration(target)} · 추천 ${duration(target-result.missing)} · 부족 ${duration(result.missing)}. ${history.length ? `과거 ${history.length}개 일정 참고 · ${model.model ? 'AI 패턴 우선순위 반영' : '기본 패턴 분석 사용 (AI 연결 불가)'}` : '참고 기록 없이 빈 시간 기준으로 추천했습니다.'}`;
+      el('recResults').innerHTML = result.items.map((s,i) => `<label class="rec-check timetable-item"><input type="checkbox" data-rec="${i}" checked><span>${s.date} ${s.start}–${s.end} · 실근무 ${duration(s.minutes)}${s.overlapTags.length ? `<br>겹침 예외: ${s.overlapTags.map(escapeHtml).join(', ')}` : '<br>겹침 없음'}</span></label>`).join('');
       month=from.slice(0,7); el('recViewControls').classList.remove('hidden');
       updateSelection(); syncView();
     } catch { el('recStatus').textContent = '추천 생성에 실패했습니다. 다시 시도해주세요.'; }
