@@ -53,7 +53,7 @@
     <section class="summary-panel" aria-label="월별 근무 시간">
       <div class="panel-header">
         <h2>월별 근무 시간</h2>
-        <button id="openMonthTagModal" type="button" class="secondary">태그 생성</button>
+        <div class="month-tag-actions"><button id="openMonthTagModal" type="button" class="secondary">태그 생성</button><button id="openTagManager" type="button" class="secondary">태그 수정</button></div>
       </div>
       <div id="monthSummary" class="summary-list"></div>
     </section>
@@ -366,6 +366,14 @@
       <div id="recResults" class="recommend-results"></div>
       <div id="recCalendar" class="hidden"></div>
       <button id="recApply" class="secondary" type="button" disabled>선택한 추천 일정 적용</button>
+    </section>
+  </div>
+  <div id="tagManagerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="tagManagerTitle">
+    <section class="modal-card">
+      <div class="modal-header"><h2 id="tagManagerTitle">태그 수정</h2><button id="closeTagManager" type="button" class="icon-button" aria-label="태그 수정 닫기">×</button></div>
+      <p>태그명을 수정하거나 삭제할 수 있습니다. 기본 ‘미지정’ 태그는 변경할 수 없습니다.</p>
+      <div id="tagManagerList" class="tag-manager-list"></div>
+      <div class="modal-actions"><button id="doneTagManager" type="button" class="secondary">닫기</button></div>
     </section>
   </div>
   <div id="monthTagModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="monthTagModalTitle">

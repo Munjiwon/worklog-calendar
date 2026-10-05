@@ -720,9 +720,31 @@ editTagPalette.addEventListener("click", handlePaletteClick);
 
 const monthTagModal = document.querySelector("#monthTagModal");
 let renamingMonthTag = null;
+const tagManagerModal = document.querySelector("#tagManagerModal");
+function renderTagManager() {
+  document.querySelector("#tagManagerList").innerHTML = getKnownTags().map(tag => {
+    const count = shifts.filter(s => getShiftTag(s) === tag).length;
+    return `<div class="tag-manager-row"><div><strong>${escapeHtml(tag)}</strong><small>일정 ${count}개</small></div>${tag === DEFAULT_TAG ? '<span>기본 태그</span>' : `<div class="month-tag-actions"><button type="button" class="secondary" data-month-tag-edit="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 이름 수정">수정</button><button type="button" class="action-button delete-button" data-month-tag-delete="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 삭제">삭제</button></div>`}</div>`;
+  }).join('');
+}
+function closeTagManager() { tagManagerModal.classList.add('hidden'); document.querySelector('#openTagManager').focus(); }
+document.querySelector('#openTagManager').addEventListener('click', () => { renderTagManager(); tagManagerModal.classList.remove('hidden'); document.querySelector('#closeTagManager').focus(); });
+document.querySelector('#closeTagManager').addEventListener('click', closeTagManager);
+document.querySelector('#doneTagManager').addEventListener('click', closeTagManager);
+tagManagerModal.addEventListener('click', event => { if (event.target === tagManagerModal) closeTagManager(); });
+tagManagerModal.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.stopPropagation(); closeTagManager(); }
+  if (event.key === 'Tab') {
+    const first = document.querySelector('#closeTagManager'), last = document.querySelector('#doneTagManager');
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+});
 function closeMonthTagDialog() {
   monthTagModal.classList.add("hidden");
-  document.querySelector("#openMonthTagModal").focus();
+  if (renamingMonthTag !== null) {
+    renderTagManager(); tagManagerModal.classList.remove('hidden'); document.querySelector('#closeTagManager').focus();
+  } else document.querySelector("#openMonthTagModal").focus();
 }
 document.querySelector("#openMonthTagModal").addEventListener("click", () => {
   renamingMonthTag = null;
@@ -764,15 +786,16 @@ document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
   closeMonthTagDialog();
   input.value = "";
   const target = [...monthSummary.querySelectorAll("[data-tag-target]")].find(item => item.dataset.tagTarget === name);
-  target?.focus();
+  if (renamingMonthTag === null) target?.focus();
 });
 
-monthSummary.addEventListener("click", event => {
+document.querySelector('#tagManagerList').addEventListener("click", event => {
   const remove = event.target.closest("[data-month-tag-delete]");
-  if (remove) { deleteTag(remove.dataset.monthTagDelete); return; }
+  if (remove) { deleteTag(remove.dataset.monthTagDelete); renderTagManager(); document.querySelector('#closeTagManager').focus(); return; }
   const edit = event.target.closest("[data-month-tag-edit]");
   if (!edit) return;
   renamingMonthTag = edit.dataset.monthTagEdit;
+  tagManagerModal.classList.add('hidden');
   document.querySelector("#monthTagModalTitle").textContent = "태그명 수정";
   document.querySelector('#monthTagForm button[type="submit"]').textContent = "저장";
   document.querySelector("#monthTagMessage").textContent = "연결된 일정과 목표 시간·식사시간 설정에 함께 반영됩니다.";
@@ -1531,7 +1554,6 @@ function renderMonthSummary(weekStart) {
         <div class="month-tag-label">
           <span class="tag-pill" style="--tag-bg: ${color.bg}; --tag-border: ${color.border}; --tag-text: ${color.text};">${escapeHtml(tag)}</span>
           <strong>${formatDuration(minutes)}</strong>
-          ${tag !== DEFAULT_TAG ? `<button type="button" class="action-button" data-month-tag-edit="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 태그명 수정">수정</button><button type="button" class="action-button delete-button" data-month-tag-delete="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 태그 삭제">삭제</button>` : ''}
         </div>
         <label class="tag-target-control">
           목표 시간
