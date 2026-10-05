@@ -26,6 +26,7 @@
 .recommend-results.hidden { display:none; }
 .recommend-form { align-items:start; }
 .rec-history-field { display:grid; gap:8px; }
+.required-mark { color:var(--danger); font-weight:800; }
 .rec-history-field select:disabled { opacity:.5; background:#edf1f7; }
 #recViewControls button[aria-pressed="true"] { background:var(--primary); color:white; }
 .rec-month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }

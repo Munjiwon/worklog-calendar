@@ -39,7 +39,12 @@
     const start=el('recStart').value,end=el('recEnd').value;
     el('recDaily').value = start && end && start < end ? Number((getNetMinutes({start,end,tag:el('recTag').value})/60).toFixed(6)) : '';
   };
+  const autoTarget = () => {
+    const minutes = getTagTargetMinutes(el('recTag').value);
+    el('recHours').value = minutes > 0 ? minutes / 60 : '';
+  };
   ['recStart','recEnd','recTag'].forEach(id => el(id).addEventListener('input', autoDaily));
+  el('recTag').addEventListener('change', autoTarget);
   el('recHistory').addEventListener('change', () => { el('recWeeks').disabled = !el('recHistory').checked; });
   const state = () => JSON.stringify([getCurrentCalendarData(), semesters, [...publicHolidays]]);
   const updateSelection = () => {
@@ -64,7 +69,7 @@
     el('recAllowedTags').innerHTML = tags.map(t => `<label class="rec-check"><input type="checkbox" value="${escapeHtml(t)}">${escapeHtml(t)}</label>`).join('');
     el('recFrom').value = toISODate(currentMonthStart);
     el('recTo').value = toISODate(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 0));
-    autoDaily(); el('recWeeks').disabled = !el('recHistory').checked;
+    autoDaily(); autoTarget(); el('recWeeks').disabled = !el('recHistory').checked;
     modal.classList.remove('hidden'); el('recTag').focus();
   };
   el('recommendClose').onclick = () => { generation++; modal.classList.add('hidden'); el('recommendSchedule').focus(); };

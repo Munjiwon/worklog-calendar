@@ -346,14 +346,14 @@
       <div class="modal-header"><h2 id="recommendTitle">일정 배치 추천</h2><button type="button" id="recommendClose" class="icon-button" aria-label="추천 닫기">×</button></div>
       <p>수업과 기존 근무를 피해 실근무시간 기준으로 추천합니다. 미리보기에서 선택한 일정만 적용하세요.</p>
       <form id="recommendForm" class="recommend-form">
-        <label>대상 태그 (필수)<select id="recTag" required></select></label>
-        <label>목표 시간 (필수)<input id="recHours" type="number" min="0.25" max="744" step="0.25" value="40" required></label>
-        <label>목표 기준 (필수)<select id="recMode" required><option value="total">기존 일정 포함 총시간</option><option value="additional">추가할 시간</option></select></label>
-        <label>시작일 (필수)<input id="recFrom" type="date" required></label>
-        <label>종료일 (필수)<input id="recTo" type="date" required></label>
+        <label><span>대상 태그 <span class="required-mark" aria-hidden="true">*</span></span><select id="recTag" required></select></label>
+        <label><span>목표 시간 <span class="required-mark" aria-hidden="true">*</span></span><input id="recHours" type="number" min="0.25" max="744" step="0.25" placeholder="목표 시간 입력" required></label>
+        <label><span>목표 기준 <span class="required-mark" aria-hidden="true">*</span></span><select id="recMode" required><option value="total">기존 일정 포함 총시간</option><option value="additional">추가할 시간</option></select></label>
+        <label><span>시작일 <span class="required-mark" aria-hidden="true">*</span></span><input id="recFrom" type="date" required></label>
+        <label><span>종료일 <span class="required-mark" aria-hidden="true">*</span></span><input id="recTo" type="date" required></label>
         <div class="rec-row-spacer" aria-hidden="true"></div>
-        <label>근무 가능 시작 (필수)<input id="recStart" type="time" value="09:00" required></label>
-        <label>근무 가능 종료 (필수)<input id="recEnd" type="time" value="18:00" required></label>
+        <label><span>근무 가능 시작 <span class="required-mark" aria-hidden="true">*</span></span><input id="recStart" type="time" value="09:00" required></label>
+        <label><span>근무 가능 종료 <span class="required-mark" aria-hidden="true">*</span></span><input id="recEnd" type="time" value="18:00" required></label>
         <label>하루 최대 실근무시간<input id="recDaily" type="number" min="0" max="24" step="any" aria-describedby="recDailyHint"><small id="recDailyHint">선택한 태그의 식사시간을 차감해 자동 입력합니다. 직접 수정할 수 있습니다.</small></label>
         <div class="rec-history-field"><label class="rec-check"><input id="recHistory" type="checkbox" checked>이전 일정 패턴 참고 (시작일 직전 기간)</label><select id="recWeeks" aria-label="이전 일정 패턴 참고 기간"><option value="4">최근 4주</option><option value="8">최근 8주</option></select></div>
         <label class="rec-check"><input id="recHoliday" type="checkbox">휴일·주말에도 배치</label>
