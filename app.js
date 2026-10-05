@@ -794,14 +794,30 @@ document.querySelector('#tagManagerList').addEventListener("click", event => {
   if (remove) { deleteTag(remove.dataset.monthTagDelete); renderTagManager(); document.querySelector('#closeTagManager').focus(); return; }
   const edit = event.target.closest("[data-month-tag-edit]");
   if (!edit) return;
-  renamingMonthTag = edit.dataset.monthTagEdit;
-  tagManagerModal.classList.add('hidden');
-  document.querySelector("#monthTagModalTitle").textContent = "태그명 수정";
-  document.querySelector('#monthTagForm button[type="submit"]').textContent = "저장";
-  document.querySelector("#monthTagMessage").textContent = "연결된 일정과 목표 시간·식사시간 설정에 함께 반영됩니다.";
-  const input = document.querySelector("#monthTagName");
-  input.value = renamingMonthTag;
-  monthTagModal.classList.remove("hidden"); input.focus(); input.select();
+  const row = edit.closest('.tag-manager-row');
+  const oldName = edit.dataset.monthTagEdit;
+  const existingInput = row.querySelector('input');
+  if (existingInput) {
+    const name = existingInput.value.trim();
+    existingInput.setCustomValidity(!name ? '태그 이름을 입력해주세요.' : name !== oldName && getKnownTags().includes(name) ? '이미 등록된 태그입니다.' : '');
+    if (!existingInput.reportValidity()) return;
+    if (name !== oldName) { renameTag(oldName, name); render(); }
+    renderTagManager();
+    const button = [...document.querySelectorAll('#tagManagerList [data-month-tag-edit]')].find(b => b.dataset.monthTagEdit === name);
+    button?.focus();
+    return;
+  }
+  const input = document.createElement('input');
+  input.type = 'text'; input.maxLength = 80; input.required = true;
+  input.value = oldName; input.setAttribute('aria-label', `${oldName} 새 태그 이름`);
+  input.addEventListener('input', () => input.setCustomValidity(''));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); edit.click(); }
+    if (e.key === 'Escape') { e.stopPropagation(); renderTagManager(); document.querySelector('#closeTagManager').focus(); }
+  });
+  row.querySelector('strong').replaceWith(input);
+  edit.textContent = '저장'; edit.setAttribute('aria-label', `${oldName} 이름 저장`);
+  input.focus(); input.select();
 });
 
 monthSummary.addEventListener("change", (event) => {

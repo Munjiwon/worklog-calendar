@@ -32,6 +32,9 @@
 .tag-manager-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px; border:1px solid var(--line); border-radius:8px; }
 .tag-manager-row > div:first-child { min-width:0; overflow-wrap:anywhere; }
 .tag-manager-row small { display:block; margin-top:4px; color:var(--muted); }
+.tag-manager-row .month-tag-actions { flex-wrap:nowrap; flex-shrink:0; }
+.tag-manager-row .month-tag-actions button { width:56px; height:42px; padding:0; font-size:14px; border-radius:6px; }
+.tag-manager-row > div:first-child { flex:1; }
 #tagManagerModal .modal-card { max-height:calc(100dvh - 40px); overflow:auto; }
 .rec-history-field select:disabled { opacity:.5; background:#edf1f7; }
 #recViewControls button[aria-pressed="true"] { background:var(--primary); color:white; }
