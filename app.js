@@ -718,6 +718,29 @@ editTag.addEventListener("keydown", (event) => {
 editTagChoices.addEventListener("click", handleTagChoiceClick);
 editTagPalette.addEventListener("click", handlePaletteClick);
 
+const monthTagModal = document.querySelector("#monthTagModal");
+function closeMonthTagDialog() {
+  monthTagModal.classList.add("hidden");
+  document.querySelector("#openMonthTagModal").focus();
+}
+document.querySelector("#openMonthTagModal").addEventListener("click", () => {
+  document.querySelector("#monthTagForm").reset();
+  document.querySelector("#monthTagMessage").textContent = "";
+  monthTagModal.classList.remove("hidden");
+  document.querySelector("#monthTagName").focus();
+});
+document.querySelector("#closeMonthTagModal").addEventListener("click", closeMonthTagDialog);
+document.querySelector("#cancelMonthTagModal").addEventListener("click", closeMonthTagDialog);
+monthTagModal.addEventListener("click", event => { if (event.target === monthTagModal) closeMonthTagDialog(); });
+monthTagModal.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.stopPropagation(); closeMonthTagDialog(); }
+  if (event.key === "Tab") {
+    const first = document.querySelector("#closeMonthTagModal");
+    const last = document.querySelector('#monthTagForm button[type="submit"]');
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+});
 document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const input = document.querySelector("#monthTagName");
@@ -725,12 +748,13 @@ document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
   const message = document.querySelector("#monthTagMessage");
   if (!name) { message.textContent = "태그 이름을 입력해주세요."; input.focus(); return; }
   const exists = getKnownTags().includes(name);
+  if (exists) { message.textContent = "이미 등록된 태그입니다. 다른 이름을 입력해주세요."; input.focus(); return; }
   if (!exists) {
     Object.defineProperty(tagColors, name, { value: getDefaultTagColor(name), enumerable: true, configurable: true, writable: true });
     saveTagColors();
   }
   render();
-  message.textContent = exists ? "이미 등록된 태그입니다. 아래에서 목표 시간을 입력하세요." : `${name} 태그를 추가했습니다. 일정 없이 목표 시간을 입력할 수 있습니다.`;
+  closeMonthTagDialog();
   input.value = "";
   const target = [...monthSummary.querySelectorAll("[data-tag-target]")].find(item => item.dataset.tagTarget === name);
   target?.focus();

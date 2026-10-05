@@ -53,13 +53,8 @@
     <section class="summary-panel" aria-label="월별 근무 시간">
       <div class="panel-header">
         <h2>월별 근무 시간</h2>
+        <button id="openMonthTagModal" type="button" class="secondary">태그 생성</button>
       </div>
-      <form id="monthTagForm" class="month-tag-add-form">
-        <label for="monthTagName">태그 이름</label>
-        <input id="monthTagName" type="text" maxlength="80" placeholder="추가할 태그 이름" required>
-        <button type="submit" class="secondary">태그 추가</button>
-      </form>
-      <p id="monthTagMessage" role="status" aria-live="polite"></p>
       <div id="monthSummary" class="summary-list"></div>
     </section>
 
@@ -372,6 +367,15 @@
       <div id="recCalendar" class="hidden"></div>
       <button id="recApply" class="secondary" type="button" disabled>선택한 추천 일정 적용</button>
     </section>
+  </div>
+  <div id="monthTagModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="monthTagModalTitle">
+    <form id="monthTagForm" class="modal-card">
+      <div class="modal-header"><h2 id="monthTagModalTitle">태그 생성</h2><button id="closeMonthTagModal" type="button" class="icon-button" aria-label="태그 생성 닫기">×</button></div>
+      <label for="monthTagName">태그 이름</label>
+      <input id="monthTagName" type="text" maxlength="80" placeholder="새 태그 이름" required>
+      <p id="monthTagMessage" role="status" aria-live="polite"></p>
+      <div class="modal-actions"><button id="cancelMonthTagModal" type="button" class="secondary">취소</button><button type="submit">생성</button></div>
+    </form>
   </div>
   <script src="./app.js"></script>
   <script src="./recommendation-engine.js"></script>

@@ -21,8 +21,6 @@
 #recAllowedTags { display:flex; flex-wrap:wrap; gap:12px; }
 .recommend-results { display:grid; gap:8px; max-height:320px; overflow:auto; }
 .recommend-results .timetable-item { justify-content:flex-start; }
-.month-tag-add-form { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:12px 0; }
-.month-tag-add-form input { width:min(280px,100%); }
 #monthTagMessage { color:var(--muted); font-size:13px; }
 #monthTagMessage:empty { display:none; }
 .recommend-results.hidden { display:none; }
