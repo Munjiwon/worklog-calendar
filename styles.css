@@ -21,6 +21,20 @@
 #recAllowedTags { display:flex; flex-wrap:wrap; gap:12px; }
 .recommend-results { display:grid; gap:8px; max-height:320px; overflow:auto; }
 .recommend-results .timetable-item { justify-content:flex-start; }
+.recommend-results.hidden { display:none; }
+.recommend-form { align-items:start; }
+.rec-history-field { display:grid; gap:8px; }
+.rec-history-field select:disabled { opacity:.5; background:#edf1f7; }
+#recViewControls button[aria-pressed="true"] { background:var(--primary); color:white; }
+.rec-month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.rec-month-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
+.rec-month-day { min-height:100px; padding:6px; border:1px solid var(--line); border-radius:6px; min-width:0; }
+.rec-month-day small { display:block; color:var(--danger); overflow-wrap:anywhere; }
+.rec-calendar-shift { display:block; width:100%; text-align:left; padding:6px; margin-top:5px; border-radius:5px; color:#1e40af; background:#dbeafe; font-size:12px; overflow-wrap:anywhere; }
+.rec-calendar-shift.exception { background:#ffedd5; color:#9a3412; }
+.rec-calendar-shift.deselected { opacity:.45; text-decoration:line-through; }
+#recCalendar { overflow-x:auto; }
+@media(max-width:720px) { .rec-row-spacer { display:none; } .rec-month-grid { min-width:650px; } }
 @media(max-width:720px) { .recommend-form { grid-template-columns:1fr; } }
 
 * {

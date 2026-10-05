@@ -2,6 +2,45 @@
   const el = id => document.getElementById(id);
   const modal = el('recommendModal');
   let result = null, snapshot = '', options = null, generation = 0;
+  let view = 'calendar', month = '';
+  const syncView = () => {
+    el('recResults').classList.toggle('hidden', view !== 'list');
+    el('recCalendar').classList.toggle('hidden', view !== 'calendar' || !result);
+    el('recListView').setAttribute('aria-pressed', String(view === 'list'));
+    el('recCalendarView').setAttribute('aria-pressed', String(view === 'calendar'));
+  };
+  const drawCalendar = () => {
+    if (!result) return;
+    const first = parseISODate(`${month}-01`), offset = (first.getDay()+6)%7;
+    const count = new Date(first.getFullYear(), first.getMonth()+1,0).getDate();
+    let html = `<div class="rec-month-nav"><button type="button" class="secondary" data-month="-1" ${month <= options.dates[0].slice(0,7) ? 'disabled' : ''}>이전 달</button><strong>${month.replace('-', '년 ')}월</strong><button type="button" class="secondary" data-month="1" ${month >= options.dates.at(-1).slice(0,7) ? 'disabled' : ''}>다음 달</button></div><p>일정을 누르면 선택·해제됩니다. 주황색은 겹침 예외입니다.</p><div class="rec-month-grid">${['월','화','수','목','금','토','일'].map(d=>`<strong>${d}</strong>`).join('')}`;
+    for (let i=0;i<offset;i++) html += '<div class="rec-month-empty"></div>';
+    for (let day=1;day<=count;day++) {
+      const date = `${month}-${String(day).padStart(2,'0')}`;
+      const holiday = getHolidayInfo(date);
+      html += `<div class="rec-month-day"><strong>${day}</strong>${holiday ? `<small>${escapeHtml(holiday.name || (holiday.type === 'weekend' ? '주말' : '휴일'))}</small>` : ''}`;
+      result.items.forEach((s,i) => {
+        if (s.date !== date) return;
+        const checked = el('recResults').querySelector(`[data-rec="${i}"]`).checked;
+        html += `<button type="button" data-calendar-rec="${i}" aria-pressed="${checked}" class="rec-calendar-shift${s.overlapTags.length ? ' exception' : ''}${checked ? '' : ' deselected'}">${escapeHtml(s.tag)}<br>${s.start}–${s.end}<br>${s.minutes}분${s.overlapTags.length ? `<br>겹침: ${s.overlapTags.map(escapeHtml).join(', ')}` : ''}</button>`;
+      });
+      html += '</div>';
+    }
+    el('recCalendar').innerHTML = html + '</div>';
+  };
+  el('recListView').onclick = () => { view='list'; syncView(); };
+  el('recCalendarView').onclick = () => { view='calendar'; drawCalendar(); syncView(); };
+  el('recCalendar').onclick = e => {
+    const nav = e.target.closest('[data-month]'), item=e.target.closest('[data-calendar-rec]');
+    if (nav) { const d=parseISODate(`${month}-01`); d.setMonth(d.getMonth()+Number(nav.dataset.month)); month=toISODate(d).slice(0,7); drawCalendar(); }
+    if (item) { const checkbox=el('recResults').querySelector(`[data-rec="${item.dataset.calendarRec}"]`); checkbox.checked=!checkbox.checked; updateSelection(); }
+  };
+  const autoDaily = () => {
+    const start=el('recStart').value,end=el('recEnd').value;
+    el('recDaily').value = start && end && start < end ? Number((getNetMinutes({start,end,tag:el('recTag').value})/60).toFixed(6)) : '';
+  };
+  ['recStart','recEnd','recTag'].forEach(id => el(id).addEventListener('input', autoDaily));
+  el('recHistory').addEventListener('change', () => { el('recWeeks').disabled = !el('recHistory').checked; });
   const state = () => JSON.stringify([getCurrentCalendarData(), semesters, [...publicHolidays]]);
   const updateSelection = () => {
     if (!result) return;
@@ -14,9 +53,10 @@
     const minutes = items.reduce((n,s) => n+s.minutes,0);
     el('recApply').textContent = `선택 ${items.length}개 적용 · 태그 ${minutes}분 / 기존과 중복 ${overlap}분 / 실제 추가 ${minutes-overlap}분`;
     el('recApply').disabled = !items.length;
+    drawCalendar();
   };
   el('recResults').addEventListener('change', updateSelection);
-  const invalidate = () => { generation++; result = null; el('recResults').replaceChildren(); el('recApply').disabled = true; el('recStatus').textContent = ''; };
+  const invalidate = () => { generation++; result = null; el('recResults').replaceChildren(); el('recCalendar').replaceChildren(); el('recViewControls').classList.add('hidden'); el('recApply').disabled = true; el('recStatus').textContent = ''; syncView(); };
   el('recommendSchedule').onclick = () => {
     invalidate();
     const tags = getKnownTags();
@@ -24,6 +64,7 @@
     el('recAllowedTags').innerHTML = tags.map(t => `<label class="rec-check"><input type="checkbox" value="${escapeHtml(t)}">${escapeHtml(t)}</label>`).join('');
     el('recFrom').value = toISODate(currentMonthStart);
     el('recTo').value = toISODate(new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 0));
+    autoDaily(); el('recWeeks').disabled = !el('recHistory').checked;
     modal.classList.remove('hidden'); el('recTag').focus();
   };
   el('recommendClose').onclick = () => { generation++; modal.classList.add('hidden'); el('recommendSchedule').focus(); };
@@ -32,6 +73,8 @@
   el('recOverlap').onchange = () => el('recAllowed').classList.toggle('hidden', !el('recOverlap').checked);
   el('recommendForm').onsubmit = async e => {
     e.preventDefault(); invalidate(); const token = generation;
+    if (!el('recommendForm').reportValidity()) return;
+    if (!el('recDaily').value) autoDaily();
     const from = el('recFrom').value, to = el('recTo').value;
     const start = timeToMinutes(el('recStart').value), end = timeToMinutes(el('recEnd').value);
     const tag = el('recTag').value;
@@ -58,11 +101,12 @@
       const existing = shifts.map(s => ({...s, tag:getShiftTag(s)}));
       const existingMinutes = existing.filter(s => s.tag === tag && dates.includes(s.date)).reduce((n,s) => n+getNetMinutes(s),0);
       const target = Math.max(0, Number(el('recHours').value)*60 - (el('recMode').value === 'total' ? existingMinutes : 0));
-      options = { dates, existing, history, tag, target, dailyMax:Number(el('recDaily').value)*60, start,end,allowed, classes:getClassesForDate, holiday:d => !el('recHoliday').checked && !!getHolidayInfo(d), net:getNetMinutes, preferences:model.patterns };
+      options = { dates, existing, history, tag, target, dailyMax:Math.round(Number(el('recDaily').value)*60), start,end,allowed, classes:getClassesForDate, holiday:d => !el('recHoliday').checked && !!getHolidayInfo(d), net:getNetMinutes, preferences:model.patterns };
       result = WorklogRecommendation.plan(options); snapshot = state();
       el('recStatus').textContent = `기존 ${existingMinutes/60}시간 · 추가 필요 ${target/60}시간 · 추천 ${(target-result.missing)/60}시간 · 부족 ${result.missing/60}시간. ${history.length ? `과거 ${history.length}개 일정 참고 · ${model.model ? 'AI 패턴 우선순위 반영' : '기본 패턴 분석 사용 (AI 연결 불가)'}` : '참고 기록 없이 빈 시간 기준으로 추천했습니다.'}`;
       el('recResults').innerHTML = result.items.map((s,i) => `<label class="rec-check timetable-item"><input type="checkbox" data-rec="${i}" checked><span>${s.date} ${s.start}–${s.end} · 실근무 ${s.minutes}분${s.overlapTags.length ? `<br>겹침 예외: ${s.overlapTags.map(escapeHtml).join(', ')}` : '<br>겹침 없음'}</span></label>`).join('');
-      updateSelection();
+      month=from.slice(0,7); el('recViewControls').classList.remove('hidden');
+      updateSelection(); syncView();
     } catch { el('recStatus').textContent = '추천 생성에 실패했습니다. 다시 시도해주세요.'; }
     finally { el('recGenerate').disabled = false; }
   };
