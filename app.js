@@ -719,11 +719,15 @@ editTagChoices.addEventListener("click", handleTagChoiceClick);
 editTagPalette.addEventListener("click", handlePaletteClick);
 
 const monthTagModal = document.querySelector("#monthTagModal");
+let renamingMonthTag = null;
 function closeMonthTagDialog() {
   monthTagModal.classList.add("hidden");
   document.querySelector("#openMonthTagModal").focus();
 }
 document.querySelector("#openMonthTagModal").addEventListener("click", () => {
+  renamingMonthTag = null;
+  document.querySelector("#monthTagModalTitle").textContent = "태그 생성";
+  document.querySelector('#monthTagForm button[type="submit"]').textContent = "생성";
   document.querySelector("#monthTagForm").reset();
   document.querySelector("#monthTagMessage").textContent = "";
   monthTagModal.classList.remove("hidden");
@@ -748,8 +752,11 @@ document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
   const message = document.querySelector("#monthTagMessage");
   if (!name) { message.textContent = "태그 이름을 입력해주세요."; input.focus(); return; }
   const exists = getKnownTags().includes(name);
+  if (renamingMonthTag === name) { closeMonthTagDialog(); return; }
   if (exists) { message.textContent = "이미 등록된 태그입니다. 다른 이름을 입력해주세요."; input.focus(); return; }
-  if (!exists) {
+  if (renamingMonthTag) {
+    renameTag(renamingMonthTag, name);
+  } else {
     Object.defineProperty(tagColors, name, { value: getDefaultTagColor(name), enumerable: true, configurable: true, writable: true });
     saveTagColors();
   }
@@ -758,6 +765,20 @@ document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
   input.value = "";
   const target = [...monthSummary.querySelectorAll("[data-tag-target]")].find(item => item.dataset.tagTarget === name);
   target?.focus();
+});
+
+monthSummary.addEventListener("click", event => {
+  const remove = event.target.closest("[data-month-tag-delete]");
+  if (remove) { deleteTag(remove.dataset.monthTagDelete); return; }
+  const edit = event.target.closest("[data-month-tag-edit]");
+  if (!edit) return;
+  renamingMonthTag = edit.dataset.monthTagEdit;
+  document.querySelector("#monthTagModalTitle").textContent = "태그명 수정";
+  document.querySelector('#monthTagForm button[type="submit"]').textContent = "저장";
+  document.querySelector("#monthTagMessage").textContent = "연결된 일정과 목표 시간·식사시간 설정에 함께 반영됩니다.";
+  const input = document.querySelector("#monthTagName");
+  input.value = renamingMonthTag;
+  monthTagModal.classList.remove("hidden"); input.focus(); input.select();
 });
 
 monthSummary.addEventListener("change", (event) => {
@@ -1510,6 +1531,7 @@ function renderMonthSummary(weekStart) {
         <div class="month-tag-label">
           <span class="tag-pill" style="--tag-bg: ${color.bg}; --tag-border: ${color.border}; --tag-text: ${color.text};">${escapeHtml(tag)}</span>
           <strong>${formatDuration(minutes)}</strong>
+          ${tag !== DEFAULT_TAG ? `<button type="button" class="action-button" data-month-tag-edit="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 태그명 수정">수정</button><button type="button" class="action-button delete-button" data-month-tag-delete="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 태그 삭제">삭제</button>` : ''}
         </div>
         <label class="tag-target-control">
           목표 시간
@@ -2619,10 +2641,28 @@ function isCalendarTagVisible(shift) {
   return !hiddenCalendarTags.has(getShiftTag(shift));
 }
 
+function renameTag(oldTag, newTag) {
+  if (oldTag === DEFAULT_TAG || getKnownTags().includes(newTag)) return;
+  shifts = shifts.map(s => getShiftTag(s) === oldTag ? { ...s, tag: newTag } : s);
+  for (const settings of [tagColors, tagTargetMinutes, tagMealSettings]) {
+    if (Object.hasOwn(settings, oldTag)) {
+      Object.defineProperty(settings, newTag, { value: settings[oldTag], enumerable: true, configurable: true, writable: true });
+      delete settings[oldTag];
+    }
+  }
+  if (!Object.hasOwn(tagColors, newTag)) Object.defineProperty(tagColors, newTag, { value:getDefaultTagColor(newTag), enumerable:true, configurable:true, writable:true });
+  for (const set of [hiddenCalendarTags, collapsedTags]) { if (set.delete(oldTag)) set.add(newTag); }
+  localStorage.setItem(storageKeys.weekClipboard, JSON.stringify(loadWeekClipboard().map(s => getShiftTag(s) === oldTag ? {...s, tag:newTag} : s)));
+  if (editTag.value === oldTag) editTag.value = newTag;
+  saveTagColors(); saveTagTargetMinutes(); saveTagMealSettings(); saveHiddenCalendarTags(); saveShifts();
+}
+
 function deleteTag(tag) {
   const normalized = normalizeTag(tag);
   if (normalized === DEFAULT_TAG) return;
-  if (!confirm(`'${normalized}' 태그를 삭제하고 해당 근무를 '${DEFAULT_TAG}'으로 변경할까요?`)) return;
+  const count = shifts.filter(s => getShiftTag(s) === normalized).length;
+  const warning = count ? `주의: '${normalized}' 태그에 일정 ${count}개가 있습니다.\n일정은 삭제하지 않고 '${DEFAULT_TAG}' 태그로 변경합니다. 식사시간 설정이 달라져 실근무시간이 바뀔 수 있습니다.\n` : '';
+  if (!confirm(`${warning}'${normalized}' 태그와 목표 시간·식사시간 설정을 삭제할까요?`)) return;
 
   shifts = shifts.map((shift) => (
     getShiftTag(shift) === normalized ? { ...shift, tag: DEFAULT_TAG } : shift
@@ -2631,6 +2671,8 @@ function deleteTag(tag) {
   delete tagTargetMinutes[normalized];
   delete tagMealSettings[normalized];
   hiddenCalendarTags.delete(normalized);
+  collapsedTags.delete(normalized);
+  localStorage.setItem(storageKeys.weekClipboard, JSON.stringify(loadWeekClipboard().map(s => getShiftTag(s) === normalized ? {...s, tag:DEFAULT_TAG} : s)));
   ensureTagColor(DEFAULT_TAG);
   editTag.value = DEFAULT_TAG;
   saveTagColors();
