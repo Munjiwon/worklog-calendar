@@ -718,9 +718,28 @@ editTag.addEventListener("keydown", (event) => {
 editTagChoices.addEventListener("click", handleTagChoiceClick);
 editTagPalette.addEventListener("click", handlePaletteClick);
 
+document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = document.querySelector("#monthTagName");
+  const name = input.value.trim();
+  const message = document.querySelector("#monthTagMessage");
+  if (!name) { message.textContent = "태그 이름을 입력해주세요."; input.focus(); return; }
+  const exists = getKnownTags().includes(name);
+  if (!exists) {
+    Object.defineProperty(tagColors, name, { value: getDefaultTagColor(name), enumerable: true, configurable: true, writable: true });
+    saveTagColors();
+  }
+  render();
+  message.textContent = exists ? "이미 등록된 태그입니다. 아래에서 목표 시간을 입력하세요." : `${name} 태그를 추가했습니다. 일정 없이 목표 시간을 입력할 수 있습니다.`;
+  input.value = "";
+  const target = [...monthSummary.querySelectorAll("[data-tag-target]")].find(item => item.dataset.tagTarget === name);
+  target?.focus();
+});
+
 monthSummary.addEventListener("change", (event) => {
   const input = event.target.closest("[data-tag-target]");
   if (!input) return;
+  if (!input.checkValidity()) { input.reportValidity(); return; }
   const tag = normalizeTag(input.dataset.tagTarget);
   tagTargetMinutes[tag] = Math.max(0, Number(input.value || 0)) * 60;
   saveTagTargetMinutes();
@@ -1443,7 +1462,8 @@ function renderMonthSummary(weekStart) {
       && !isHoliday(shift.date)
     ));
     const total = monthShifts.reduce((sum, shift) => sum + getNetMinutes(shift), 0);
-    const tagTotals = getTagTotals(monthShifts);
+    const totals = new Map(getTagTotals(monthShifts));
+    const tagTotals = getKnownTags().map(tag => [tag, totals.get(tag) || 0]);
     const item = document.createElement("article");
     item.className = "summary-item month-summary-item";
     item.innerHTML = `
@@ -1468,8 +1488,8 @@ function renderMonthSummary(weekStart) {
           <strong>${formatDuration(minutes)}</strong>
         </div>
         <label class="tag-target-control">
-          충족
-          <input type="number" min="0" step="1" value="${target / 60}" data-tag-target="${escapeHtml(tag)}">
+          목표 시간
+          <input type="number" min="0" step="0.25" aria-label="${escapeHtml(tag)} 목표 시간" value="${target / 60}" data-tag-target="${escapeHtml(tag)}">
         </label>
         <div class="target-result">${target > 0 ? (met ? `부합 · ${percent}%` : `${percent}% · 부족 ${formatDuration(remaining)}`) : "기준 없음"}</div>
       `;
@@ -2547,6 +2567,7 @@ function getKnownTags() {
   const tags = new Set([DEFAULT_TAG]);
   shifts.forEach((shift) => tags.add(getShiftTag(shift)));
   Object.keys(tagColors).forEach((tag) => tags.add(normalizeTag(tag)));
+  Object.keys(tagTargetMinutes).forEach((tag) => tags.add(normalizeTag(tag)));
   return [...tags].sort((a, b) => a.localeCompare(b, "ko-KR"));
 }
 

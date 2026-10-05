@@ -54,6 +54,12 @@
       <div class="panel-header">
         <h2>월별 근무 시간</h2>
       </div>
+      <form id="monthTagForm" class="month-tag-add-form">
+        <label for="monthTagName">태그 이름</label>
+        <input id="monthTagName" type="text" maxlength="80" placeholder="추가할 태그 이름" required>
+        <button type="submit" class="secondary">태그 추가</button>
+      </form>
+      <p id="monthTagMessage" role="status" aria-live="polite"></p>
       <div id="monthSummary" class="summary-list"></div>
     </section>
 
