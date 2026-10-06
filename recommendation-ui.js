@@ -127,8 +127,8 @@
     if (!items.length) { el('recStatus').textContent = '적용할 일정을 선택하세요.'; return; }
     // Recompute all constraints against the current state before writing.
     const check = WorklogRecommendation.plan(options);
-    if (JSON.stringify(check) !== JSON.stringify(result)) { invalidate(); return; }
-    shifts.push(...items.map(({date,start,end,tag}) => ({id:crypto.randomUUID(),date,start,end,tag,title:tag})));
+    if (JSON.stringify(check) !== JSON.stringify(result)) { invalidate(); el('recStatus').textContent = '배치 조건이 변경됐습니다. 다시 추천해주세요.'; return; }
+    shifts.push(...items.map(({date,start,end,tag}) => ({id:makeId(),date,start,end,tag,title:tag})));
     saveShifts(); render(); invalidate(); el('recStatus').textContent = `${items.length}개 추천 일정을 적용했습니다.`;
   };
 })();

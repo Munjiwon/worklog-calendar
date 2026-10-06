@@ -1,0 +1,21 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const app = fs.readFileSync(path.join(__dirname,'app.js'),'utf8');
+const ui = fs.readFileSync(path.join(__dirname,'recommendation-ui.js'),'utf8');
+test('recommendation apply registers and saves on HTTP without randomUUID', () => {
+  const item = {date:'2026-10-06',start:'09:00',end:'10:00',tag:'test'};
+  const elements = {recApply:{},recStatus:{textContent:''},recResults:{querySelectorAll:()=>[{dataset:{rec:'0'}}]}};
+  let saved = 0, rendered = 0;
+  const context = {crypto:{}, el:id=>elements[id], result:{items:[item]}, snapshot:'same',state:()=>'same',options:{},shifts:[], WorklogRecommendation:{plan:()=>({items:[item]})},saveShifts:()=>saved++,render:()=>rendered++,invalidate:()=>{context.result=null;}};
+  vm.createContext(context);
+  vm.runInContext(app.slice(app.indexOf('function makeId()'), app.indexOf('function normalizeTag(')),context);
+  vm.runInContext(ui.slice(ui.indexOf("  el('recApply').onclick ="), ui.lastIndexOf('})();')),context);
+  elements.recApply.onclick();
+  assert.equal(context.shifts.length,1); assert.ok(context.shifts[0].id);
+  assert.equal(context.shifts[0].tag,'test'); assert.equal(saved,1); assert.equal(rendered,1);
+  assert.match(elements.recStatus.textContent,/1개 추천 일정을 적용/);
+  elements.recApply.onclick(); assert.equal(context.shifts.length,1);
+});
