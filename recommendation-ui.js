@@ -130,5 +130,6 @@
     if (JSON.stringify(check) !== JSON.stringify(result)) { invalidate(); el('recStatus').textContent = '배치 조건이 변경됐습니다. 다시 추천해주세요.'; return; }
     shifts.push(...items.map(({date,start,end,tag}) => ({id:makeId(),date,start,end,tag,title:tag})));
     saveShifts(); render(); invalidate(); el('recStatus').textContent = `${items.length}개 추천 일정을 적용했습니다.`;
+    el('recommendClose').click();
   };
 })();
