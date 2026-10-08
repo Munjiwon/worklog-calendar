@@ -2955,7 +2955,7 @@ function formatDuration(minutes) {
 function startOfWeek(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
-  const day = (copy.getDay() - weekStartsOn + 7) % 7;
+  const day = (copy.getDay() + 6) % 7;
   copy.setDate(copy.getDate() - day);
   return copy;
 }
@@ -3005,7 +3005,9 @@ function startOfMonth(date) {
 }
 
 function getMonthGridDays(monthStart) {
-  const gridStart = startOfWeek(monthStart);
+  const gridStart = new Date(monthStart);
+  gridStart.setHours(0, 0, 0, 0);
+  gridStart.setDate(gridStart.getDate() - (gridStart.getDay() - weekStartsOn + 7) % 7);
   const days = [];
   for (let index = 0; index < 42; index += 1) {
     days.push(addDays(gridStart, index));

@@ -10,17 +10,31 @@ test('week preference defaults to Sunday and preserves Monday', () => {
   assert.equal(normalizeCalendarData({weekStartsOn:7}).weekStartsOn, 0);
 });
 
-test('week boundaries match Sunday and Monday including month/year edges', () => {
+test('weekly calculation always starts Monday regardless of display preference', () => {
   const source = fs.readFileSync(require.resolve('../app.js'), 'utf8');
   const context = {weekStartsOn:0, Date};
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf('function startOfWeek('), source.indexOf('function getCalendarDayNames(')), context);
   const date = new Date(2027,0,1);
-  assert.equal(context.startOfWeek(date).getDay(), 0);
-  assert.equal(context.startOfWeek(date).getDate(), 27);
+  assert.equal(context.startOfWeek(date).getDay(), 1);
+  assert.equal(context.startOfWeek(date).getDate(), 28);
   context.weekStartsOn = 1;
   assert.equal(context.startOfWeek(date).getDay(), 1);
   assert.equal(context.startOfWeek(date).getDate(), 28);
+  assert.equal(context.startOfWeek(new Date(2027,0,3)).getDate(), 28);
+});
+
+test('monthly grid follows display preference independently of weekly totals', () => {
+  const source = fs.readFileSync(require.resolve('../app.js'), 'utf8');
+  const context = {weekStartsOn:0, Date, addDays:(date,n)=>{const d=new Date(date); d.setDate(d.getDate()+n); return d;}};
+  vm.createContext(context);
+  const start = source.indexOf('function getMonthGridDays(');
+  vm.runInContext(source.slice(start, source.indexOf('\n}', start)+2), context);
+  const month = new Date(2027,0,1);
+  assert.equal(context.getMonthGridDays(month)[0].getDay(),0);
+  assert.equal(context.getMonthGridDays(month).length,42);
+  context.weekStartsOn=1;
+  assert.equal(context.getMonthGridDays(month)[0].getDay(),1);
 });
 
 test('account update requires authentication/password and cannot change another user or role', async () => {
