@@ -21,12 +21,13 @@
     candidates.sort((a, b) => b.score - a.score || a.date.localeCompare(b.date) || a.s - b.s);
     for (const permitOverlap of [false, true]) {
       if (permitOverlap && !allowed.length) break;
-      for (const c of candidates) {
-        if (remaining <= 0) break;
+      while (remaining > 0) {
+        let longest = null;
+        // Candidates are already ordered by historical preference. Keep that
+        // order only as a tie-breaker after contiguous real working time.
+        for (const c of candidates) {
         const used = [...existing, ...selected].filter(x => x.date === c.date && x.tag === tag).reduce((n, x) => n + net(x), 0);
-        const lengths = history.map(net).filter(n => n > 0).sort((a,b) => a-b);
-        const typical = lengths.length ? lengths[Math.floor(lengths.length / 2)] : dailyMax;
-        const budget = Math.min(remaining, dailyMax - used, typical);
+        const budget = Math.min(remaining, dailyMax - used);
         if (budget <= 0) continue;
         let best = null;
         for (let e = c.s + 1; e <= end; e++) {
@@ -38,7 +39,11 @@
           if (minutes > budget) break;
           if (minutes > 0 && (!best || minutes > best.minutes)) best = { ...item, minutes, overlapTags: [...new Set(collisions.map(x => x.tag))] };
         }
-        if (best) { selected.push(best); remaining -= best.minutes; }
+        if (best && (!longest || best.minutes > longest.minutes)) longest = best;
+        }
+        if (!longest) break;
+        selected.push(longest);
+        remaining -= longest.minutes;
       }
     }
     return { items: selected.sort((a,b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)), missing: remaining };

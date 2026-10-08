@@ -5,6 +5,32 @@ const minutes = t => Number(t.slice(0,2))*60+Number(t.slice(3));
 const net = s => minutes(s.end)-minutes(s.start);
 const base = { dates:['2026-10-05'], existing:[], history:[], tag:'A', target:120, dailyMax:240, start:540, end:780, allowed:[], classes:()=>[], holiday:()=>false, net };
 
+test('prefers one four-hour block over earlier fragments and short history', () => {
+  const r=plan({...base,target:240,end:1020,
+    classes:()=>[{start:'11:00',end:'13:00'}],
+    history:[{date:'2026-09-28',start:'09:00',end:'10:00',tag:'A'}]});
+  assert.equal(r.missing,0);
+  assert.equal(r.items.length,1);
+  assert.equal(r.items[0].start,'13:00');
+  assert.equal(r.items[0].end,'17:00');
+});
+
+test('splits only when needed and never crosses blocked classes', () => {
+  const r=plan({...base,target:240,end:960,classes:()=>[{start:'11:00',end:'14:00'}]});
+  assert.equal(r.missing,0);
+  assert.equal(r.items.length,2);
+  assert.deepEqual(r.items.map(s=>[s.start,s.end]),[['09:00','11:00'],['14:00','16:00']]);
+});
+
+test('chooses an intact block on another date before a preferred fragment', () => {
+  const r=plan({...base,dates:['2026-10-05','2026-10-06'],target:240,
+    history:[{date:'2026-09-28',start:'09:00',end:'10:00',tag:'A'}],
+    classes:d=>d==='2026-10-05'?[{start:'11:00',end:'13:00'}]:[]});
+  assert.equal(r.items.length,1);
+  assert.equal(r.items[0].date,'2026-10-06');
+  assert.equal(r.items[0].minutes,240);
+});
+
 const mealNet = s => net(s) - [[720,780],[1080,1140]].reduce((sum,[start,end]) =>
   sum + Math.max(0, Math.min(minutes(s.end),end)-Math.max(minutes(s.start),start)), 0);
 
