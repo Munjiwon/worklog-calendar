@@ -16,9 +16,9 @@
   };
   const drawCalendar = () => {
     if (!result) return;
-    const first = parseISODate(`${month}-01`), offset = (first.getDay()+6)%7;
+    const first = parseISODate(`${month}-01`), offset = (first.getDay()-weekStartsOn+7)%7;
     const count = new Date(first.getFullYear(), first.getMonth()+1,0).getDate();
-    let html = `<div class="rec-month-nav"><button type="button" class="secondary" data-month="-1" ${month <= options.dates[0].slice(0,7) ? 'disabled' : ''}>이전 달</button><strong>${month.replace('-', '년 ')}월</strong><button type="button" class="secondary" data-month="1" ${month >= options.dates.at(-1).slice(0,7) ? 'disabled' : ''}>다음 달</button></div><p>일정을 누르면 선택·해제됩니다. 주황색은 겹침 예외입니다.</p><div class="rec-month-grid">${['월','화','수','목','금','토','일'].map(d=>`<strong>${d}</strong>`).join('')}`;
+    let html = `<div class="rec-month-nav"><button type="button" class="secondary" data-month="-1" ${month <= options.dates[0].slice(0,7) ? 'disabled' : ''}>이전 달</button><strong>${month.replace('-', '년 ')}월</strong><button type="button" class="secondary" data-month="1" ${month >= options.dates.at(-1).slice(0,7) ? 'disabled' : ''}>다음 달</button></div><p>일정을 누르면 선택·해제됩니다. 주황색은 겹침 예외입니다.</p><div class="rec-month-grid">${getCalendarDayNames().map(d=>`<strong>${d}</strong>`).join('')}`;
     for (let i=0;i<offset;i++) html += '<div class="rec-month-empty"></div>';
     for (let day=1;day<=count;day++) {
       const date = `${month}-${String(day).padStart(2,'0')}`;

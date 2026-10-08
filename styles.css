@@ -2164,3 +2164,16 @@ button:disabled {
     min-width: 136px;
   }
 }
+.account-settings {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #d5ddef;
+  border-radius: 16px;
+  color: #17233b;
+}
+.account-settings::backdrop { background: rgb(15 23 42 / 45%); }
+.account-settings form { display: grid; gap: 10px; }
+.account-settings hr { border: 0; border-top: 1px solid #d5ddef; margin: 24px 0; }
+.account-settings input, .account-settings select { width: 100%; box-sizing: border-box; }

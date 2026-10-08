@@ -112,6 +112,7 @@ const server = http.createServer(async (request, response) => {
       const user = await findUser(session.sub);
       sendJson(response, 200, {
         name: user?.name || session.sub,
+        email: user?.email || "",
         role: session.role,
         username: session.sub,
         lastAccessAt: user?.lastAccessAt || null
@@ -126,6 +127,28 @@ const server = http.createServer(async (request, response) => {
       }
       response.writeHead(204, { "Cache-Control": "no-store" });
       response.end();
+      return;
+    }
+
+    if (request.method === "PUT" && pathname === "/api/account") {
+      if (!session) { sendJson(response, 401, { error: "로그인이 필요합니다." }); return; }
+      const user = await findUser(session.sub);
+      const body = await readJsonBody(request);
+      if (!user || !verifyPassword(String(body.currentPassword || ""), user.passwordHash)) {
+        sendJson(response, 400, { error: "현재 비밀번호를 확인해주세요." }); return;
+      }
+      const email = normalizeEmail(body.email);
+      const password = String(body.password || "");
+      if (!isValidEmail(email) || (password && (password.length < 6 || password.length > 256))) {
+        sendJson(response, 400, { error: "올바른 이메일과 6~256자 비밀번호를 입력해주세요." }); return;
+      }
+      if (await findDuplicateUserEmail(email, user.username)) {
+        sendJson(response, 409, { error: "이미 사용 중인 이메일입니다." }); return;
+      }
+      const updated = { ...user, email, passwordHash: password ? hashPassword(password) : user.passwordHash };
+      await updateUser(updated);
+      setSessionCookie(response, updated);
+      sendJson(response, 200, { user: publicUser(updated) });
       return;
     }
 
@@ -1201,6 +1224,7 @@ function getStorageUsername(username) {
 function normalizeCalendarData(data) {
   const source = data && typeof data === "object" && !Array.isArray(data) ? data : {};
   return {
+    weekStartsOn: source.weekStartsOn === 1 ? 1 : 0,
     holidays: Array.isArray(source.holidays) ? source.holidays.map(String) : [],
     weekendWorkdays: Array.isArray(source.weekendWorkdays) ? source.weekendWorkdays.map(String) : [],
     shifts: Array.isArray(source.shifts) ? source.shifts.map(normalizeShiftData).filter(Boolean) : [],

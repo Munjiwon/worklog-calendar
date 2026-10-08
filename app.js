@@ -123,6 +123,7 @@ const timetableCatalogMessage = document.querySelector("#timetableCatalogMessage
 const timetableCatalogList = document.querySelector("#timetableCatalogList");
 const addSelectedCourses = document.querySelector("#addSelectedCourses");
 
+let weekStartsOn = 0;
 let currentWeekStart = startOfWeek(new Date());
 let currentMonthStart = startOfMonth(currentWeekStart);
 let storageKeys = makeStorageKeys("anonymous");
@@ -1259,6 +1260,7 @@ function makeStorageKeys(username) {
   const userKey = encodeURIComponent(String(username || "anonymous").trim().toLowerCase());
   const prefix = `worklog-calendar-prototype:${userKey}`;
   return {
+    weekStartsOn: `${prefix}:week-starts-on`,
     holidays: `${prefix}:holidays`,
     weekendWorkdays: `${prefix}:weekend-workdays`,
     shifts: `${prefix}:shifts`,
@@ -1273,6 +1275,7 @@ function makeStorageKeys(username) {
 
 function readLocalCalendarData() {
   return {
+    weekStartsOn: loadJsonFromStorage(storageKeys.weekStartsOn, 0),
     holidays: loadJsonFromStorage(storageKeys.holidays, []),
     weekendWorkdays: loadJsonFromStorage(storageKeys.weekendWorkdays, []),
     shifts: loadJsonFromStorage(storageKeys.shifts, []),
@@ -1286,6 +1289,8 @@ function readLocalCalendarData() {
 
 function applyCalendarData(data) {
   const normalized = normalizeCalendarData(data);
+  weekStartsOn = normalized.weekStartsOn;
+  currentWeekStart = startOfWeek(currentWeekStart);
   shifts = normalized.shifts;
   tagColors = normalized.tagColors;
   holidays = new Set(normalized.holidays);
@@ -1297,6 +1302,7 @@ function applyCalendarData(data) {
 }
 
 function writeLocalCalendarData(data) {
+  localStorage.setItem(storageKeys.weekStartsOn, JSON.stringify(data.weekStartsOn === 1 ? 1 : 0));
   localStorage.setItem(storageKeys.holidays, JSON.stringify(data.holidays || []));
   localStorage.setItem(storageKeys.weekendWorkdays, JSON.stringify(data.weekendWorkdays || []));
   localStorage.setItem(storageKeys.shifts, JSON.stringify(data.shifts || []));
@@ -1309,6 +1315,7 @@ function writeLocalCalendarData(data) {
 
 function getCurrentCalendarData() {
   return {
+    weekStartsOn,
     holidays: [...holidays],
     weekendWorkdays: [...weekendWorkdays],
     shifts,
@@ -1336,6 +1343,7 @@ function getEmptyCalendarData() {
 function normalizeCalendarData(data) {
   const source = data && typeof data === "object" && !Array.isArray(data) ? data : {};
   return {
+    weekStartsOn: source.weekStartsOn === 1 ? 1 : 0,
     holidays: Array.isArray(source.holidays) ? source.holidays : [],
     weekendWorkdays: Array.isArray(source.weekendWorkdays) ? source.weekendWorkdays : [],
     shifts: Array.isArray(source.shifts) ? source.shifts : [],
@@ -1750,7 +1758,7 @@ function renderCalendar(weekShifts, overlapIds) {
     column.className = `day-column${holiday ? " holiday" : ""}`;
     column.innerHTML = `
       <header class="day-head">
-        <strong>${dayNames[index]}</strong>
+        <strong>${dayNames[(date.getDay() + 6) % 7]}</strong>
         <span>${formatDate(date)}</span>
         <div class="holiday-row">
           ${holidayName ? `<span class="holiday-name" title="${escapeHtml(holidayName)}">${escapeHtml(holidayName)}</span>` : ""}
@@ -1776,7 +1784,7 @@ function renderMonthCalendar() {
   monthCalendar.innerHTML = "";
   monthCalendarLabel.textContent = formatMonthKey(toISODate(currentMonthStart).slice(0, 7));
 
-  dayNames.forEach((dayName) => {
+  getCalendarDayNames().forEach((dayName) => {
     const item = document.createElement("div");
     item.className = "month-weekday";
     item.textContent = dayName;
@@ -2947,9 +2955,13 @@ function formatDuration(minutes) {
 function startOfWeek(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
-  const day = copy.getDay() || 7;
-  copy.setDate(copy.getDate() - day + 1);
+  const day = (copy.getDay() - weekStartsOn + 7) % 7;
+  copy.setDate(copy.getDate() - day);
   return copy;
+}
+
+function getCalendarDayNames() {
+  return weekStartsOn === 1 ? dayNames : ["일", ...dayNames.slice(0, 6)];
 }
 
 function addDays(date, amount) {

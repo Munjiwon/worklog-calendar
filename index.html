@@ -17,6 +17,7 @@
         <p id="accountGreeting" class="account-greeting" aria-live="polite" hidden>안녕하세요, <strong id="accountName"></strong>님</p>
         <div class="toolbar-actions">
           <a id="adminLink" class="secondary link-button" href="/admin" hidden>관리자</a>
+          <button id="openSettings" type="button" class="secondary">설정</button>
           <form method="post" action="/logout" class="logout-form">
             <button type="submit" class="secondary">로그아웃</button>
           </form>
@@ -385,7 +386,29 @@
       <div class="modal-actions"><button id="cancelMonthTagModal" type="button" class="secondary">취소</button><button type="submit">생성</button></div>
     </form>
   </div>
+  <dialog id="accountSettings" class="account-settings">
+    <div class="modal-header"><h2>설정</h2><button id="closeSettings" type="button" class="icon-button" aria-label="설정 닫기">×</button></div>
+    <form id="calendarSettingsForm">
+      <label for="settingsWeekStart">주 시작일 (월·주간 달력)</label>
+      <select id="settingsWeekStart"><option value="0">일요일</option><option value="1">월요일</option></select>
+      <button type="submit">달력 설정 저장</button>
+    </form>
+    <hr>
+    <form id="accountSettingsForm">
+      <label for="settingsEmail">이메일</label>
+      <input id="settingsEmail" type="email" autocomplete="email" required maxlength="254">
+      <label for="settingsCurrentPassword">현재 비밀번호</label>
+      <input id="settingsCurrentPassword" type="password" autocomplete="current-password" required>
+      <label for="settingsPassword">새 비밀번호 (변경할 때만 입력)</label>
+      <input id="settingsPassword" type="password" autocomplete="new-password" minlength="6" maxlength="256">
+      <label for="settingsPasswordConfirm">새 비밀번호 확인</label>
+      <input id="settingsPasswordConfirm" type="password" autocomplete="new-password" maxlength="256">
+      <button type="submit">계정 정보 저장</button>
+    </form>
+    <p id="settingsStatus" role="status" aria-live="polite"></p>
+  </dialog>
   <script src="./app.js"></script>
+  <script src="./settings-ui.js"></script>
   <script src="./recommendation-engine.js"></script>
   <script src="./recommendation-ui.js"></script>
 </body>
