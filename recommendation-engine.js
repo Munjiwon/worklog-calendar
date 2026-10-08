@@ -10,6 +10,9 @@
       if (holiday(date)) continue;
       const day = new Date(`${date}T12:00:00`).getDay() || 7;
       for (let s = start; s < end; s += 15) {
+        // A recommendation must begin with actual work, not a deducted meal.
+        // Use the same tag-specific net calculation as the final duration.
+        if (net({ date, start: time(s), end: time(s + 1), tag }) <= 0) continue;
         const score = history.reduce((sum, h) => sum + ((new Date(`${h.date}T12:00:00`).getDay() || 7) === day ? 4 : 0) + (Math.abs(minute(h.start) - s) < 60 ? 2 : 0), 0)
           + preferences.reduce((sum, p, i) => sum + (p.day === day && Math.abs(p.start - s) < 60 ? (preferences.length - i) / 10 : 0), 0);
         candidates.push({ date, s, score });
