@@ -210,11 +210,11 @@ const server = http.createServer(async (request, response) => {
         const patterns = (Array.isArray(input.patterns) ? input.patterns : []).slice(0, 56)
           .filter(p => Number.isInteger(p.day) && p.day >= 1 && p.day <= 7 && Number.isInteger(p.start) && p.start >= 0 && p.start < 1440 && Number.isFinite(p.count) && p.count > 0)
           .map(p => ({ day: p.day, start: p.start, count: p.count }));
-        const base = (process.env.RECOMMENDATION_LLM_URL || "http://203.250.33.67:30454/v1").replace(/\/$/, "");
+        const base = (process.env.RECOMMENDATION_LLM_URL || "http://203.250.33.67:30457/v1").replace(/\/$/, "");
         const responseLLM = await fetch(`${base}/chat/completions`, {
           method: "POST", signal: AbortSignal.timeout(20000),
           headers: { "Content-Type": "application/json", ...(process.env.RECOMMENDATION_LLM_KEY ? { Authorization: `Bearer ${process.env.RECOMMENDATION_LLM_KEY}` } : {}) },
-          body: JSON.stringify({ model: process.env.RECOMMENDATION_LLM_MODEL || "Qwen/Qwen3.8-27B-FP8", temperature: 0, max_tokens: 512,
+          body: JSON.stringify({ model: process.env.RECOMMENDATION_LLM_MODEL || "Qwen/Qwen3.5-9B", temperature: 0, max_tokens: 512,
             chat_template_kwargs: { enable_thinking: false },
             messages: [{ role: "system", content: 'Rank historical work patterns by suitability for repeating a weekly routine. Return JSON only: {"patterns":[{"day":1,"start":540}]}. Use only provided day/start pairs, highest priority first.' }, { role: "user", content: JSON.stringify(patterns) }] })
         });
