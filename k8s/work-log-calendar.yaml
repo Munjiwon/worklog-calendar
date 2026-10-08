@@ -117,6 +117,10 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            - name: RECOMMENDATION_LLM_URL
+              value: "http://vllm-service-qwen35-9b.vllm-workspace.svc.cluster.local:8000/v1"
+            - name: RECOMMENDATION_LLM_MODEL
+              value: "Qwen/Qwen3.5-9B"
             - name: WORKLOG_USERNAME
               valueFrom:
                 secretKeyRef:
