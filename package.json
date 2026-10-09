@@ -1,6 +1,6 @@
 {
   "name": "worklog-calendar",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Work log calendar with a simple login session",
   "scripts": {

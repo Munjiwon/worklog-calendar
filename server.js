@@ -63,6 +63,10 @@ const server = http.createServer(async (request, response) => {
       await touchUserAccessSafely(session.sub);
     }
 
+    if (request.method === "GET" && ["/release-notes.js", "/release-notes-ui.js"].includes(pathname)) {
+      await serveFile(response, pathname.slice(1));
+      return;
+    }
     if (request.method === "GET" && (pathname === "/login" || pathname === "/login.html")) {
       if (session) {
         redirect(response, "/");

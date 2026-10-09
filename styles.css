@@ -2177,3 +2177,17 @@ button:disabled {
 .account-settings form { display: grid; gap: 10px; }
 .account-settings hr { border: 0; border-top: 1px solid #d5ddef; margin: 24px 0; }
 .account-settings input, .account-settings select { width: 100%; box-sizing: border-box; }
+.release-footer { padding: 16px 24px 28px; text-align: center; }
+.release-trigger { background: transparent; color: #526079; font-size: 13px; border: 1px solid #d5ddef; border-radius: 20px; padding: 8px 16px; }
+.release-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); box-sizing: border-box; padding: 0 28px; border: 1px solid #e3e8f0; border-radius: 20px; color: #17233b; background: white; }
+.release-dialog::backdrop { background: rgb(15 23 42 / 45%); }
+.release-header { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: white; padding: 22px 0 16px; z-index: 1; }
+.release-header h2 { margin: 0; font-size: 28px; }
+.release-entry { padding: 24px 0; border-top: 1px solid #e9edf3; }
+.release-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.release-row h3 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 19px; }
+.release-row time { color: #66748b; font-size: 13px; }
+.release-badge { font-size: 11px; color: #2454ca; background: #edf3ff; padding: 4px 8px; border-radius: 12px; }
+.release-subtitle { margin: 16px 0 8px; font-weight: 700; }
+.release-entry ul { padding-left: 20px; margin: 0; line-height: 1.8; color: #475569; }
+@media (max-width: 480px) { .release-dialog { padding: 0 20px; } .release-header h2 { font-size: 24px; } }

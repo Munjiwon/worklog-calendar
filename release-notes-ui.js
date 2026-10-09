@@ -1,0 +1,61 @@
+(() => {
+  const releases = window.WorklogReleases;
+  if (!Array.isArray(releases) || !releases.length) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'release-trigger';
+  button.textContent = 'v' + releases[0].version + ' · 버전 기록';
+  button.setAttribute('aria-haspopup', 'dialog');
+  const footer = document.createElement('footer');
+  footer.className = 'release-footer';
+  footer.append(button);
+  document.body.append(footer);
+  const dialog = document.createElement('dialog');
+  dialog.className = 'release-dialog';
+  dialog.setAttribute('aria-labelledby', 'releaseTitle');
+  const header = document.createElement('header');
+  header.className = 'release-header';
+  const heading = document.createElement('h2');
+  heading.id = 'releaseTitle';
+  heading.textContent = '버전 기록';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'icon-button';
+  close.textContent = '×';
+  close.setAttribute('aria-label', '버전 기록 닫기');
+  header.append(heading, close);
+  dialog.append(header);
+  releases.forEach((release, index) => {
+    const article = document.createElement('article');
+    article.className = 'release-entry';
+    const row = document.createElement('div');
+    row.className = 'release-row';
+    const version = document.createElement('h3');
+    version.textContent = release.version;
+    if (index === 0) {
+      const badge = document.createElement('span');
+      badge.className = 'release-badge';
+      badge.textContent = '현재 버전';
+      version.append(badge);
+    }
+    const date = document.createElement('time');
+    date.dateTime = release.date;
+    date.textContent = release.date.replaceAll('-', '.');
+    row.append(version, date);
+    const title = document.createElement('p');
+    title.className = 'release-subtitle';
+    title.textContent = release.title;
+    const list = document.createElement('ul');
+    release.changes.forEach(text => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      list.append(item);
+    });
+    article.append(row, title, list);
+    dialog.append(article);
+  });
+  document.body.append(dialog);
+  button.onclick = () => dialog.showModal();
+  close.onclick = () => dialog.close();
+  dialog.addEventListener('close', () => button.focus());
+})();
