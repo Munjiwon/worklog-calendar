@@ -2191,3 +2191,4 @@ button:disabled {
 .release-subtitle { margin: 16px 0 8px; font-weight: 700; }
 .release-entry ul { padding-left: 20px; margin: 0; line-height: 1.8; color: #475569; }
 @media (max-width: 480px) { .release-dialog { padding: 0 20px; } .release-header h2 { font-size: 24px; } }
+.release-history-note { color: #66748b; font-size: 12px; line-height: 1.7; }
