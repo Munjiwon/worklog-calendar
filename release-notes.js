@@ -2,6 +2,15 @@
   // Historical dates are commit dates, not verified production deployment dates.
   const releases = [
   {
+    "version": "1.2.0",
+    "date": "2026-10-10",
+    "title": "태그 수정에서 색상 변경",
+    "changes": [
+      "태그 수정 창의 색상 변경에서 원하는 색상을 선택할 수 있습니다.",
+      "선택한 색상은 바로 저장되어 달력과 태그 표시에 반영됩니다."
+    ]
+  },
+  {
     "version": "1.1.0",
     "date": "2026-10-09",
     "title": "버전 기록 추가",
