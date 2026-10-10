@@ -3,6 +3,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname,'app.js'),'utf8');
+test('tag color changes do not alter other tags or schedules',()=>{
+  const c={tagColors:{A:{bg:'old'},B:{bg:'keep'}},TAG_PALETTE:[{bg:'new',border:'border',text:'text'}],normalizeTag:t=>t};
+  vm.createContext(c);
+  vm.runInContext(source.slice(source.indexOf('function setTagColor('),source.indexOf('function getTagMealSetting(')),c);
+  c.setTagColor('A',0);
+  assert.equal(c.tagColors.A.bg,'new');
+  assert.equal(c.tagColors.B.bg,'keep');
+});
 function setup(approve = true) {
   const context = { DEFAULT_TAG:'미지정', shifts:[{tag:'A',date:'2026-10-05',start:'09:00',end:'10:00'}], tagColors:{A:{bg:'blue'}}, tagTargetMinutes:{A:2400}, tagMealSettings:{A:{lunch:{start:720,end:780}}}, hiddenCalendarTags:new Set(['A']), collapsedTags:new Set(['A']), storageKeys:{weekClipboard:'clipboard'}, editTag:{value:'A'}, clipboard:[{tag:'A'}], warning:'' };
   context.normalizeTag = t => t || '미지정'; context.getShiftTag = s => s.tag || '미지정';

@@ -2192,3 +2192,7 @@ button:disabled {
 .release-entry ul { padding-left: 20px; margin: 0; line-height: 1.8; color: #475569; }
 @media (max-width: 480px) { .release-dialog { padding: 0 20px; } .release-header h2 { font-size: 24px; } }
 .release-history-note { color: #66748b; font-size: 12px; line-height: 1.7; }
+.manager-colors { margin-top: 10px; }
+.manager-colors summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.manager-palette { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 3px 4px; }
+.manager-palette .color-swatch[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 2px; }

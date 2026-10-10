@@ -725,7 +725,8 @@ const tagManagerModal = document.querySelector("#tagManagerModal");
 function renderTagManager() {
   document.querySelector("#tagManagerList").innerHTML = getKnownTags().map(tag => {
     const count = shifts.filter(s => getShiftTag(s) === tag).length;
-    return `<div class="tag-manager-row"><div><strong>${escapeHtml(tag)}</strong><small>일정 ${count}개</small></div>${tag === DEFAULT_TAG ? '<span>기본 태그</span>' : `<div class="month-tag-actions"><button type="button" class="secondary" data-month-tag-edit="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 이름 수정">수정</button><button type="button" class="action-button delete-button" data-month-tag-delete="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 삭제">삭제</button></div>`}</div>`;
+    const color = getTagColor(tag);
+    return `<div class="tag-manager-row"><div><strong class="tag-pill" style="--tag-bg: ${color.bg}; --tag-border: ${color.border}; --tag-text: ${color.text};">${escapeHtml(tag)}</strong><small>일정 ${count}개</small><details class="manager-colors"><summary>색상 변경</summary><div class="manager-palette" role="group" aria-label="${escapeHtml(tag)} 색상">${TAG_PALETTE.map((c, i) => `<button type="button" class="color-swatch" data-manager-color="${i}" data-manager-tag="${escapeHtml(tag)}" style="--swatch-bg: ${c.bg}; --swatch-border: ${c.border};" aria-label="${escapeHtml(tag)} 색상 ${i + 1}" aria-pressed="${c.bg === color.bg && c.border === color.border}"></button>`).join('')}</div><small>선택하면 바로 저장됩니다.</small></details></div>${tag === DEFAULT_TAG ? '<span>기본 태그</span>' : `<div class="month-tag-actions"><button type="button" class="secondary" data-month-tag-edit="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 이름 수정">수정</button><button type="button" class="action-button delete-button" data-month-tag-delete="${escapeHtml(tag)}" aria-label="${escapeHtml(tag)} 삭제">삭제</button></div>`}</div>`;
   }).join('');
 }
 function closeTagManager() { tagManagerModal.classList.add('hidden'); document.querySelector('#openTagManager').focus(); }
@@ -791,6 +792,23 @@ document.querySelector("#monthTagForm").addEventListener("submit", (event) => {
 });
 
 document.querySelector('#tagManagerList').addEventListener("click", event => {
+  const swatch = event.target.closest('[data-manager-color]');
+  if (swatch) {
+    const tag = swatch.dataset.managerTag;
+    setTagColor(tag, Number(swatch.dataset.managerColor));
+    saveTagColors();
+    render();
+    const row = swatch.closest('.tag-manager-row');
+    row.querySelectorAll('[data-manager-color]').forEach(b => b.setAttribute('aria-pressed', String(b === swatch)));
+    const label = row.querySelector('strong');
+    if (label) {
+      const color = getTagColor(tag);
+      label.style.setProperty('--tag-bg', color.bg);
+      label.style.setProperty('--tag-border', color.border);
+      label.style.setProperty('--tag-text', color.text);
+    }
+    return;
+  }
   const remove = event.target.closest("[data-month-tag-delete]");
   if (remove) { deleteTag(remove.dataset.monthTagDelete); renderTagManager(); document.querySelector('#closeTagManager').focus(); return; }
   const edit = event.target.closest("[data-month-tag-edit]");
